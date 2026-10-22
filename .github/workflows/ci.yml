@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      APP_KEY: [REDACTED]
+      STRIPE_KEY: [REDACTED]
+      STRIPE_SECRET: [REDACTED]
+      OPENAI_API_KEY: [REDACTED]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          ini-values: error_reporting=E_ALL^\^E_DEPRECATED
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Install Node.js Dependencies
+        run: npm ci
+
+      - name: Generate Application Key
+        run: php artisan key:generate
+
+      - name: Run Migrations
+        run: php artisan migrate --force
+
+      - name: Execute Test Suite
+        run: vendor/bin/phpunit --no-coverage
+
+      - name: Verify Code Style (Pint)
+        run: vendor/bin/pint --test
+
+      - name: Check for Security Vulnerabilities
+        run: composer audit --update-lockfile
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: tests/

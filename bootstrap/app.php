@@ -4,6 +4,9 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use App\Providers\AIServiceProvider;
+use App\Providers\EnterpriseServiceProvider;
+use App\Providers\GlobalServiceProvider;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -18,4 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
-    })->create();
+    })
+    ->withProviders([
+        AIServiceProvider::class,
+        EnterpriseServiceProvider::class,
+        GlobalServiceProvider::class,
+    ])
+    ->create();

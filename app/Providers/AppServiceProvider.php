@@ -3,6 +3,12 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use App\Models\Campaign;
+use App\Models\Task;
+use App\Models\User;
+use App\Observers\CampaignObserver;
+use App\Observers\TaskObserver;
+use App\Observers\UserObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,6 +25,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Campaign::observe(CampaignObserver::class);
+        Task::observe(TaskObserver::class);
+        User::observe(UserObserver::class);
     }
 }

@@ -1,0 +1,86 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
+use Spatie\Permission\Guard;
+use App\Scopes\TenantScope;
+
+class User extends Authenticatable
+{
+    use HasApiTokens, HasRoles, Notifiable;
+
+    /**
+     * The attributes that are mass assignable.
+     */
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'tenant_id',
+        'avatar',
+    ];
+
+    /**
+     * The attributes that should be hidden for serialization.
+     */
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    /**
+     * The attributes that should be cast.
+     */
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+    ];
+
+    /**
+     * Boot the model and apply tenant scope.
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::addGlobalScope(new TenantScope);
+    }
+
+    /**
+     * Get the guard name used by the model.
+     * @return string
+     */
+    public function guardName(): string
+    {
+        return 'api';
+    }
+
+    /**
+     * Override trait methods to ensure they work correctly.
+     */
+    protected function getGuardNames()
+    {
+        return Guard::getNames($this);
+    }
+
+    protected function getDefaultGuardName(): string
+    {
+        return Guard::getDefaultName($this);
+    }
+
+    // Public methods to test the protected ones
+    public function testGetGuardNames()
+    {
+        return $this->getGuardNames();
+    }
+
+    public function testGetDefaultGuardName()
+    {
+        return $this->getDefaultGuardName();
+    }
+}
