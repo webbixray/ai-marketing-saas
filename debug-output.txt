@@ -1,7 +1,0 @@
-PHPUnit Started (PHPUnit 12.5.40 using PHP 8.3.6 (cli) on Linux)
-Test Runner Configured
-Bootstrap Finished (/root/ai-marketing-saas/vendor/autoload.php)
-Event Facade Sealed
-PHPUnit 12.5.40 by Sebastian Bergmann and contributors.
-
-Test file "tests/Feature/NotificationTest.php::test_user_can_get_unread_notification_count" not found
