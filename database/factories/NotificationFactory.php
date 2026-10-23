@@ -39,9 +39,11 @@ class NotificationFactory extends Factory
     public function configure()
     {
         return $this->afterMaking(function (Notification $notification) {
-            // If the notifiable_id is set and is a user, set the tenant_id to the user's tenant_id
+            // If the notifiable_id is set and is a user, set the tenant_id to the user's tenant_id.
+            // withoutGlobalScopes(): this is an intentional cross-tenant metadata copy —
+            // the notification must inherit the recipient's tenant.
             if ($notification->notifiable_type === User::class && $notification->notifiable_id) {
-                $user = User::find($notification->notifiable_id);
+                $user = User::withoutGlobalScopes()->find($notification->notifiable_id);
                 if ($user) {
                     $notification->tenant_id = $user->tenant_id;
                 }
@@ -49,7 +51,7 @@ class NotificationFactory extends Factory
         })->afterCreating(function (Notification $notification) {
             // Same as afterMaking but for created models
             if ($notification->notifiable_type === User::class && $notification->notifiable_id) {
-                $user = User::find($notification->notifiable_id);
+                $user = User::withoutGlobalScopes()->find($notification->notifiable_id);
                 if ($user) {
                     $notification->tenant_id = $user->tenant_id;
                     $notification->save();

@@ -3,99 +3,132 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
+    /**
+     * Render the admin dashboard (stats + charts + funnel).
+     */
     public function index()
     {
-        $stats = $this->stats();
-        $charts = $this->charts();
-        $funnel = $this->funnel();
-        
         return view('admin.dashboard', [
-            'stats' => $stats,
-            'charts' => $charts,
-            'funnel' => $funnel,
+            'stats' => $this->stats(),
+            'charts' => $this->charts(),
+            'funnel' => $this->funnel(),
         ]);
     }
 
-    public function stats()
+    /**
+     * Platform stats scoped to the admin's tenant when they have one,
+     * otherwise platform-wide (super admin without a tenant).
+     *
+     * @return array<string, mixed>
+     */
+    public function stats(): array
     {
-        $tenant = auth()->user()->tenant;
-        
-        $stats = [
-            'total_campaigns' => \App\Models\Campaign::where('tenant_id', $tenant->id)->count(),
-            'active_campaigns' => \App\Models\Campaign::where('tenant_id', $tenant->id)
-                ->where('status', 'active')->count(),
-            'total_clients' => \App\Models\Client::where('tenant_id', $tenant->id)->count(),
-            'total_spend' => \App\Models\Campaign::where('tenant_id', $tenant->id)
-                ->sum('budget') ?? 0,
-            'total_revenue' => \App\Models\ConversionEvent::whereHas('campaign', function($q) use ($tenant) {
-                $q->where('campaigns.tenant_id', $tenant->id);
-            })->sum('revenue') ?? 0,
-            'cac' => \App\Models\Campaign::where('tenant_id', $tenant->id)->avg('cac') ?? 0,
-            'roas' => number_format((\App\Models\Campaign::where('tenant_id', $tenant->id)->sum('budget') ?? 1) > 0 
-                ? (\App\Models\ConversionEvent::whereHas('campaign', function($q) use ($tenant) {
-                    $q->where('campaigns.tenant_id', $tenant->id);
-                })->sum('revenue') ?? 0) / \App\Models\Campaign::where('tenant_id', $tenant->id)->sum('budget') ?? 1 
-                : 0, 2),
-            'conversion_rate' => number_format(\App\Models\ConversionEvent::whereHas('campaign', function($q) use ($tenant) {
-                $q->where('campaigns.tenant_id', $tenant->id);
-            })->count() / max(\App\Models\Campaign::where('tenant_id', $tenant->id)->count(), 1) * 100, 2),
+        $tenantId = auth()->user()?->tenant_id;
+
+        $campaignCount = (int) \App\Models\Campaign::query()
+            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+            ->count();
+
+        $budget = (float) \App\Models\Campaign::query()
+            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+            ->sum('budget');
+
+        $conversionQuery = fn () => \App\Models\ConversionEvent::query()
+            ->when($tenantId !== null, fn ($q) => $q->whereHas('campaign', fn ($cq) => $cq->where('tenant_id', $tenantId)));
+
+        $revenue = (float) $conversionQuery()->sum('revenue');
+        $conversionCount = (int) $conversionQuery()->count();
+
+        $clients = \App\Models\Client::query()
+            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId));
+
+        return [
+            'total_campaigns' => $campaignCount,
+            'active_campaigns' => (int) \App\Models\Campaign::query()
+                ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+                ->where('status', 'active')
+                ->count(),
+            'total_clients' => (int) $clients->count(),
+            'total_spend' => $budget,
+            'total_revenue' => $revenue,
+            'cac' => number_format($campaignCount > 0 ? $budget / $campaignCount : 0, 2),
+            'roas' => $budget > 0 ? number_format($revenue / $budget, 2) : 0,
+            'conversion_rate' => number_format($campaignCount > 0 ? $conversionCount / $campaignCount * 100 : 0, 2),
         ];
-        
-        return $stats;
     }
 
-    public function charts($period = '30d')
+    /**
+     * Chart data for the dashboard (portable across SQLite/MySQL).
+     *
+     * @return array<string, mixed>
+     */
+    public function charts(string $period = '30d'): array
     {
-        $dateFilter = match($period) {
-            '7d' => DB::raw('created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)'),
-            '30d' => DB::raw('created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)'),
-            '90d' => DB::raw('created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)'),
-            default => DB::raw('created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)')
+        $tenantId = auth()->user()?->tenant_id;
+
+        $days = match ($period) {
+            '7d' => 7,
+            '90d' => 90,
+            default => 30,
         };
-        
-        $charts = [
-            'spend_over_time' => \App\Models\Campaign::where('tenant_id', auth()->user()->tenant->id)
+        $since = now()->subDays($days);
+
+        $campaigns = \App\Models\Campaign::query()
+            ->where('created_at', '>=', $since)
+            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId));
+
+        return [
+            'spend_over_time' => (clone $campaigns)
                 ->selectRaw('DATE(created_at) as date, SUM(budget) as daily_spend')
-                ->where($dateFilter)
                 ->groupBy('date')
                 ->orderBy('date')
                 ->get()
                 ->toArray(),
-            'campaigns_by_channel' => \App\Models\Campaign::where('tenant_id', auth()->user()->tenant->id)
-                ->selectRaw('channel, COUNT(*) as count')
-                ->groupBy('channel')
+            'campaigns_by_channel' => (clone $campaigns)
+                ->selectRaw('platform, COUNT(*) as count')
+                ->whereNotNull('platform')
+                ->groupBy('platform')
                 ->get()
-                ->keyBy('channel')
+                ->keyBy('platform')
                 ->toArray(),
-            'top_campaigns' => \App\Models\Campaign::where('tenant_id', auth()->user()->tenant->id)
+            'top_campaigns' => \App\Models\Campaign::query()
+                ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
                 ->with('client')
                 ->orderBy('budget', 'desc')
                 ->take(5)
                 ->get()
                 ->toArray(),
         ];
-        
-        return $charts;
     }
 
-    public function funnel()
+    /**
+     * Lead funnel metrics.
+     *
+     * @return array<string, int>
+     */
+    public function funnel(): array
     {
-        $funnel = [
-            'impressions' => 0,  // Would need touchpoints table
-            'clicks' => 0,
-            'leads' => \App\Models\Client::where('tenant_id', auth()->user()->tenant->id)->count(),
-            'opportunities' => \App\Models\Client::where('health_score', '>=', 80)
-                ->where('tenant_id', auth()->user()->tenant->id)->count(),
-            'closed_won' => \App\Models\Client::where('status', 'active')
-                ->where('tenant_id', auth()->user()->tenant->id)->count(),
+        $tenantId = auth()->user()?->tenant_id;
+
+        $scoping = fn ($q) => $q->when($tenantId !== null, fn ($c) => $c->where('tenant_id', $tenantId));
+
+        // Touchpoints have no type discriminator; treat every touchpoint as an
+        // impression and every recorded conversion as a click/conversion.
+        $impressions = (int) \App\Models\Touchpoint::query()->tap($scoping)->count();
+        $clicks = (int) \App\Models\ConversionEvent::query()->tap($scoping)->count();
+
+        $clients = \App\Models\Client::query()
+            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId));
+
+        return [
+            'impressions' => $impressions,
+            'clicks' => $clicks,
+            'leads' => (int) $clients->count(),
+            'opportunities' => (int) (clone $clients)->where('health_score', '>=', 80)->count(),
+            'closed_won' => (int) (clone $clients)->where('status', 'active')->count(),
         ];
-        
-        return $funnel;
     }
 }

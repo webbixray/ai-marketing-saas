@@ -9,15 +9,20 @@ use Symfony\Component\HttpFoundation\Response;
 class CheckAdminRole
 {
     /**
-     * Handle an incoming request.
+     * Allow only users with the admin role.
      *
-     * @param  Closure(Request): (Response)  $next
+     * @param  \Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!Auth::check() || !Auth::user()->hasRole('admin')) {
-            // Redirect to home or show an error
-            return redirect()->route('home')->with('error', 'Unauthorized access.');
+        $user = $request->user();
+
+        if (!$user || !$user->hasRole('admin')) {
+            if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
+                return response()->json(['message' => 'Forbidden. Admin role required.'], 403);
+            }
+
+            return redirect()->route('login')->with('error', 'Unauthorized access.');
         }
 
         return $next($request);

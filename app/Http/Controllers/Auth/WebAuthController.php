@@ -88,7 +88,7 @@ class WebAuthController extends Controller
             // Regenerate session to prevent session fixation
             $request->session()->regenerate();
 
-            return redirect()->intended('admin.dashboard');
+            return redirect()->intended('/admin/dashboard');
         }
 
         return back()->withErrors([

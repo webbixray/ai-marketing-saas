@@ -5,10 +5,24 @@ namespace App\Scopes;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Scope;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Request;
+use Illuminate\Support\Facades\Schema;
 
+/**
+ * Global multi-tenant scope.
+ *
+ * Resolution order for the current tenant:
+ *  1. Authenticated user's tenant_id (covers web sessions and Sanctum tokens
+ *     resolved by any guard)
+ *  2. Bearer token user id (raw DB lookup; used where the guard has not
+ *     resolved the user yet)
+ *  3. Session tenant (guest web flows that pre-bind a tenant)
+ *
+ * Users without a tenant (platform administrators) are not scoped and see
+ * all tenants.
+ */
 class TenantScope implements Scope
 {
     /**
@@ -17,30 +31,48 @@ class TenantScope implements Scope
     public function apply(Builder $builder, Model $model): void
     {
         // Skip if the model doesn't have a tenant_id column
-        if (!Schema::hasColumn($model->getTable(), 'tenant_id')) {
+        if (! Schema::hasColumn($model->getTable(), 'tenant_id')) {
             return;
         }
 
-        $tenantId = null;
+        $tenantId = $this->resolveTenantId();
 
-        // Check if we have a bearer token in the request (Sanctum authentication)
+        if ($tenantId !== null) {
+            $builder->where($model->getTable().'.tenant_id', $tenantId);
+        }
+    }
+
+    /**
+     * Determine the tenant id that should scope the current query.
+     */
+    protected function resolveTenantId(): ?int
+    {
+        // 1. Authenticated user (web session or any resolved Sanctum guard)
+        try {
+            if (Auth::hasUser()) {
+                $tenantId = (int) (Auth::user()->tenant_id ?? 0);
+
+                return $tenantId > 0 ? $tenantId : null;
+            }
+        } catch (\Throwable) {
+            // Auth not resolvable (early boot) — fall through
+        }
+
+        // 2. Bearer token: Sanctum personal tokens are "id|token"
         $token = Request::bearerToken();
         if ($token) {
-            // Sanctum token format: "id|token"
-            // We can extract the user ID from the token without triggering the guard's user method
             $parts = explode('|', $token);
             if (count($parts) === 2 && ctype_digit($parts[0])) {
-                $userId = (int)$parts[0];
-                // Get the tenant_id directly from the users table to avoid triggering the global scope on the User model
-                $tenantId = DB::table('users')->where('id', $userId)->value('tenant_id');
+                // Raw lookup to avoid triggering the global scope on the User model
+                $tenantId = DB::table('users')->where('id', (int) $parts[0])->value('tenant_id');
+
+                return $tenantId !== null ? (int) $tenantId : null;
             }
-        } else {
-            // Fallback to session for web requests
-            $tenantId = session('tenant_id');
         }
 
-        if ($tenantId) {
-            $builder->where($model->getTable() . '.tenant_id', $tenantId);
-        }
+        // 3. Session fallback for guest web requests
+        $sessionTenant = session('tenant_id');
+
+        return $sessionTenant ? (int) $sessionTenant : null;
     }
 }

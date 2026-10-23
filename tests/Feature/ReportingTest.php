@@ -67,13 +67,15 @@ class ReportingTest extends TestCase
         $user = User::factory()->create();
         $this->actingAs($user, 'sanctum');
 
-        // Create some tasks for the user
+        // Create some tasks for the user (same tenant, so the tenant scope applies)
         Task::factory()->count(5)->create([
             'assigned_to' => $user->id,
+            'tenant_id' => $user->tenant_id,
             'status' => 'completed',
         ]);
         Task::factory()->count(3)->create([
             'assigned_to' => $user->id,
+            'tenant_id' => $user->tenant_id,
             'status' => 'pending',
         ]);
 
