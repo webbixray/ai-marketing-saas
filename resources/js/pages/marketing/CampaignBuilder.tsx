@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, Sparkles, Target, DollarSign, Users, Image, Save, CheckCircle, ArrowRight } from 'lucide-react';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 import { Input } from '@components/ui/Input';
 import { Select } from '@components/ui/Select';
 import { Textarea } from '@components/ui/Input';

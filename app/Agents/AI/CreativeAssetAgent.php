@@ -3,17 +3,14 @@
 namespace App\Agents\AI;
 
 use App\Agents\BaseAgent;
-use App\Contracts\AgentStatus;
+use App\Domain\Agent\AgentCapability;
 use App\Domain\Agent\AgentContext;
 use App\Domain\Agent\AgentResult;
-use App\Domain\Agent\AgentCapability;
-use App\Services\AI\LLMService;
 use App\Models\Campaign;
-use App\Models\CreativeAsset;
 use App\Models\Client;
+use App\Models\CreativeAsset;
+use App\Services\AI\LLMService;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class CreativeAssetAgent extends BaseAgent
 {
@@ -113,7 +110,7 @@ class CreativeAssetAgent extends BaseAgent
 
         // Load context
         $campaign = $campaignId ? Campaign::find($campaignId) : null;
-        $client = $clientId ? \App\Models\Client::find($clientId) : ($campaign?->client ?? null);
+        $client = $clientId ? Client::find($clientId) : ($campaign?->client ?? null);
 
         // Generate creative concepts
         $concepts = $this->generateConcepts($brief, $campaign, $client, $payload, $concepts);
@@ -126,7 +123,7 @@ class CreativeAssetAgent extends BaseAgent
         $promptResults = [];
         foreach ($concepts as $index => $concept) {
             $prompt = $this->buildImagePrompt($concept, $payload['style'] ?? 'photorealistic');
-            
+
             // Generate image using DALL-E
             $imageResult = $this->llm->generateImage($prompt, [
                 'provider' => $this->config['image_provider'] ?? 'dalle',
@@ -148,7 +145,7 @@ class CreativeAssetAgent extends BaseAgent
         $savedAssets = [];
         if ($this->config['auto_save_assets']) {
             foreach ($promptResults as $result) {
-                if (!empty($result['image_result']['images'])) {
+                if (! empty($result['image_result']['images'])) {
                     foreach ($result['image_result']['images'] as $imageUrl) {
                         $asset = $this->saveCreativeAsset($result, $tenant, $campaign, $client, $imageUrl);
                         if ($asset) {
@@ -218,6 +215,7 @@ class CreativeAssetAgent extends BaseAgent
 
         if (isset($result['error'])) {
             Log::error('Concept generation failed', ['error' => $result['error']]);
+
             return [];
         }
 
@@ -240,31 +238,31 @@ Number of Concepts: {$count}
 Campaign: {$campaign->name}
 Platform: {$campaign->platform}
 Objective: {$campaign->objective}
-Target Audience: " . json_encode($campaign->audience_targeting ?? []) . "
-";
+Target Audience: ".json_encode($campaign->audience_targeting ?? []).'
+';
         }
 
         if ($client) {
             $context .= "
 Client: {$client->name}
-Industry: {$client->industry ?? 'Not specified'}
-Brand Guidelines: " . json_encode($client->branding ?? []) . "
-";
+Industry: {$client->industry_var}
+Brand Guidelines: ".json_encode($client->branding !== null ? $client->branding : []).'
+';
         }
 
-        if (!empty($payload['product_info'])) {
-            $context .= "
-Product/Service: " . json_encode($payload['product_info']) . "
-";
+        if (! empty($payload['product_info'])) {
+            $context .= '
+Product/Service: '.json_encode($payload['product_info']).'
+';
         }
 
-        if (!empty($payload['target_audience'])) {
-            $context .= "
-Target Audience: " . json_encode($payload['target_audience']) . "
-";
+        if (! empty($payload['target_audience'])) {
+            $context .= '
+Target Audience: '.json_encode($payload['target_audience']).'
+';
         }
 
-        if (!empty($payload['style'])) {
+        if (! empty($payload['style'])) {
             $context .= "
 Preferred Style: {$payload['style']}
 ";
@@ -315,7 +313,7 @@ Return as JSON with this structure:
      */
     protected function getConceptSystemPrompt(): string
     {
-        return "You are an award-winning Creative Director with expertise in digital advertising across Meta, Google, TikTok, LinkedIn, and programmatic. You create visually compelling, conversion-optimized ad concepts that balance brand aesthetics with performance marketing. You understand platform-specific creative formats, color psychology, visual hierarchy, and the science of attention. You think in terms of visual storytelling that drives measurable action.";
+        return 'You are an award-winning Creative Director with expertise in digital advertising across Meta, Google, TikTok, LinkedIn, and programmatic. You create visually compelling, conversion-optimized ad concepts that balance brand aesthetics with performance marketing. You understand platform-specific creative formats, color psychology, visual hierarchy, and the science of attention. You think in terms of visual storytelling that drives measurable action.';
     }
 
     /**
@@ -341,28 +339,28 @@ Return as JSON with this structure:
         $promptParts[] = $styleMap[$style] ?? $style;
 
         // Color palette
-        if (!empty($concept['color_palette'])) {
-            $promptParts[] = 'color palette: ' . implode(', ', $concept['color_palette']);
+        if (! empty($concept['color_palette'])) {
+            $promptParts[] = 'color palette: '.implode(', ', $concept['color_palette']);
         }
 
         // Composition
-        if (!empty($concept['composition'])) {
-            $promptParts[] = 'composition: ' . $concept['composition'];
+        if (! empty($concept['composition'])) {
+            $promptParts[] = 'composition: '.$concept['composition'];
         }
 
         // Key elements
-        if (!empty($concept['key_elements'])) {
-            $promptParts[] = 'featuring: ' . implode(', ', $concept['key_elements']);
+        if (! empty($concept['key_elements'])) {
+            $promptParts[] = 'featuring: '.implode(', ', $concept['key_elements']);
         }
 
         // Mood
-        if (!empty($concept['mood'])) {
-            $promptParts[] = 'mood: ' . $concept['mood'];
+        if (! empty($concept['mood'])) {
+            $promptParts[] = 'mood: '.$concept['mood'];
         }
 
         // Text overlay guidance
-        if (!empty($concept['text_overlay'])) {
-            $promptParts[] = 'text space for: ' . $concept['text_overlay'];
+        if (! empty($concept['text_overlay'])) {
+            $promptParts[] = 'text space for: '.$concept['text_overlay'];
         }
 
         // Aspect ratio
@@ -388,7 +386,7 @@ Return as JSON with this structure:
     {
         try {
             $concept = $result['concept'];
-            
+
             $asset = CreativeAsset::create([
                 'tenant_id' => $tenant->id,
                 'client_id' => $client?->id,
@@ -417,6 +415,7 @@ Return as JSON with this structure:
             return $asset;
         } catch (\Throwable $e) {
             Log::error('Failed to save creative asset', ['error' => $e->getMessage()]);
+
             return null;
         }
     }
@@ -430,11 +429,15 @@ Return as JSON with this structure:
         $variants = [];
 
         foreach ($concepts as $concept) {
-            if (count($variants) >= $count) break;
-            
+            if (count($variants) >= $count) {
+                break;
+            }
+
             foreach (($concept['suggestions'] ?? []) as $suggestion) {
-                if (count($variants) >= $count) break;
-                
+                if (count($variants) >= $count) {
+                    break;
+                }
+
                 $variant = [
                     'type' => $concept['type'],
                     'original' => $concept['original'] ?? '',
@@ -480,7 +483,7 @@ Return as JSON with this structure:
             ];
         }
 
-        if ($performanceScore > 75 && !$fatigue['is_fatigued']) {
+        if ($performanceScore > 75 && ! $fatigue['is_fatigued']) {
             $analysis['recommendations'][] = [
                 'type' => 'scale',
                 'priority' => 'medium',
@@ -505,7 +508,5 @@ Return as JSON with this structure:
         ], $config);
     }
 
-    protected function onShutdown(): void
-    {
-    }
+    protected function onShutdown(): void {}
 }

@@ -3,17 +3,14 @@
 namespace App\Agents\AI;
 
 use App\Agents\BaseAgent;
-use App\Contracts\AgentStatus;
+use App\Domain\Agent\AgentCapability;
 use App\Domain\Agent\AgentContext;
 use App\Domain\Agent\AgentResult;
-use App\Domain\Agent\AgentCapability;
-use App\Services\AI\LLMService;
 use App\Models\Campaign;
-use App\Models\CreativeAsset;
 use App\Models\Client;
+use App\Models\CreativeAsset;
+use App\Services\AI\LLMService;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 
 class CopyGenerationAgent extends BaseAgent
 {
@@ -100,7 +97,7 @@ class CopyGenerationAgent extends BaseAgent
         // Load context
         $campaign = $campaignId ? Campaign::find($campaignId) : null;
         $creative = $creativeId ? CreativeAsset::find($creativeId) : null;
-        $client = $clientId ? \App\Models\Client::find($clientId) : ($campaign?->client ?? $creative?->client);
+        $client = $clientId ? Client::find($clientId) : ($campaign?->client ?? $creative?->client);
 
         $results = [];
 
@@ -117,7 +114,7 @@ class CopyGenerationAgent extends BaseAgent
                 $variants
             );
 
-            if (!empty($copies)) {
+            if (! empty($copies)) {
                 $results[$copyType] = $copies;
             }
         }
@@ -134,7 +131,7 @@ class CopyGenerationAgent extends BaseAgent
 
         return AgentResult::success($results, [
             'copy_types_generated' => array_keys($results),
-            'total_variants' => array_sum(array_map('count', array_filter($results, fn($v) => is_array($v)))),
+            'total_variants' => array_sum(array_map('count', array_filter($results, fn ($v) => is_array($v)))),
         ])->withNextAction('save_copy_variants', [
             'campaign_id' => $campaignId,
             'creative_id' => $creativeId,
@@ -168,6 +165,7 @@ class CopyGenerationAgent extends BaseAgent
 
         if (isset($result['error'])) {
             Log::error("Copy generation failed for {$copyType}", ['error' => $result['error']]);
+
             return [];
         }
 
@@ -207,28 +205,28 @@ Campaign Platform: {$campaign->platform}
         if ($creative) {
             $context .= "
 Creative: {$creative->name}
-Creative Elements: " . json_encode($creative->elements ?? []) . "
-";
+Creative Elements: ".json_encode($creative->elements !== null ? $creative->elements : []).'
+';
         }
 
         if ($client) {
             $context .= "
 Client: {$client->name}
-Industry: {$client->industry ?? 'Not specified'}
-Brand Voice: " . json_encode($client->branding ?? []) . "
-";
+Industry: {$client->industry_var}
+Brand Voice: ".json_encode($client->branding_var).'
+';
         }
 
-        if (!empty($targetAudience)) {
-            $context .= "
-Target Audience: " . json_encode($targetAudience) . "
-";
+        if (! empty($targetAudience)) {
+            $context .= '
+Target Audience: '.json_encode($targetAudience).'
+';
         }
 
-        if (!empty($productInfo)) {
-            $context .= "
-Product/Service: " . json_encode($productInfo) . "
-";
+        if (! empty($productInfo)) {
+            $context .= '
+Product/Service: '.json_encode($productInfo).'
+';
         }
 
         $instructions = $this->getCopyInstructions($copyType, $platform, $objective);
@@ -266,13 +264,13 @@ Return as JSON with this structure:
         $basePrompt = "You are an expert direct-response copywriter with 20+ years of experience writing high-converting ad copy for {$platform}. You understand platform-specific constraints, audience psychology, and conversion optimization. You write copy that stops the scroll, creates desire, and drives action.";
 
         $typePrompts = [
-            'headline' => "You specialize in headlines that stop the scroll. You know the 3-second rule. You write headlines that promise value, create curiosity, or trigger emotion in under 40 characters.",
-            'body' => "You write persuasive body copy that builds desire, overcomes objections, and leads to action. You know the PAS, AIDA, and BAB frameworks. You write for scanning, not reading.",
+            'headline' => 'You specialize in headlines that stop the scroll. You know the 3-second rule. You write headlines that promise value, create curiosity, or trigger emotion in under 40 characters.',
+            'body' => 'You write persuasive body copy that builds desire, overcomes objections, and leads to action. You know the PAS, AIDA, and BAB frameworks. You write for scanning, not reading.',
             'cta' => "You write calls-to-action that convert. You know the difference between 'Learn More' and 'Get My Free Guide'. You write CTAs that reduce friction and increase urgency.",
-            'description' => "You write platform-optimized descriptions that complement headlines and drive clicks. You know character limits, formatting options, and what works in each placement.",
+            'description' => 'You write platform-optimized descriptions that complement headlines and drive clicks. You know character limits, formatting options, and what works in each placement.',
         ];
 
-        return $basePrompt . "\n\n" . ($typePrompts[$copyType] ?? "");
+        return $basePrompt."\n\n".($typePrompts[$copyType] ?? '');
     }
 
     /**
@@ -281,10 +279,10 @@ Return as JSON with this structure:
     protected function getCopyInstructions(string $copyType, string $platform, string $objective): string
     {
         $platformRules = [
-            'meta' => "Facebook/Instagram: Headlines ≤40 chars, Primary text ≤125 chars, Description ≤30 chars. Use emojis. Test 2-3 headlines.",
-            'google' => "Google Ads: Headlines ≤30 chars (3 max), Descriptions ≤90 chars (2 max). Use keywords. Include USP.",
-            'linkedin' => "LinkedIn: Headlines ≤200 chars, Intro text ≤600 chars. Professional tone. B2B focus.",
-            'tiktok' => "TikTok: Captions ≤150 chars. Native, authentic tone. Hook in first 3 seconds. Hashtags.",
+            'meta' => 'Facebook/Instagram: Headlines ≤40 chars, Primary text ≤125 chars, Description ≤30 chars. Use emojis. Test 2-3 headlines.',
+            'google' => 'Google Ads: Headlines ≤30 chars (3 max), Descriptions ≤90 chars (2 max). Use keywords. Include USP.',
+            'linkedin' => 'LinkedIn: Headlines ≤200 chars, Intro text ≤600 chars. Professional tone. B2B focus.',
+            'tiktok' => 'TikTok: Captions ≤150 chars. Native, authentic tone. Hook in first 3 seconds. Hashtags.',
         ];
 
         $typeInstructions = [
@@ -301,9 +299,11 @@ Copy Type: {$copyType}
 Platform: {$platform}
 Objective: {$objective}
 
-Platform Rules: {$platformRules[$platform] ?? 'Follow platform best practices'}
+$platform_rules_var = \$platformRules[\$platform] ?? 'Follow platform best practices';\n
+Platform Rules: {$platform_rules_var}
 
-Instructions: {$typeInstructions[$copyType] ?? \"Write {$variants} variants optimized for {$platform}\"}
+Instructions: {$typeInstructions_var[$copyType]}
+$typeInstructions_var = $typeInstructions;
 
 Additional Requirements:
 - Include character count for each variant
@@ -351,10 +351,12 @@ Additional Requirements:
         $pairs = [];
 
         foreach ($copies as $type => $variants) {
-            if (!is_array($variants)) continue;
+            if (! is_array($variants)) {
+                continue;
+            }
 
-            $groupA = array_filter($variants, fn($v) => ($v['ab_test_group'] ?? 'A') === 'A');
-            $groupB = array_filter($variants, fn($v) => ($v['ab_test_group'] ?? 'B') === 'B');
+            $groupA = array_filter($variants, fn ($v) => ($v['ab_test_group'] ?? 'A') === 'A');
+            $groupB = array_filter($variants, fn ($v) => ($v['ab_test_group'] ?? 'B') === 'B');
 
             // Pair them up
             $count = min(count($groupA), count($groupB));
@@ -393,7 +395,9 @@ Additional Requirements:
         $totalVariants = 0;
 
         foreach ($results as $type => $variants) {
-            if (!is_array($variants)) continue;
+            if (! is_array($variants)) {
+                continue;
+            }
 
             foreach ($variants as $variant) {
                 $trigger = $variant['emotional_trigger'] ?? 'unknown';
@@ -486,7 +490,5 @@ Additional Requirements:
         ], $config);
     }
 
-    protected function onShutdown(): void
-    {
-    }
+    protected function onShutdown(): void {}
 }

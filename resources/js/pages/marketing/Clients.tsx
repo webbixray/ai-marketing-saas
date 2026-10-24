@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, Search, MoreVertical, Edit, Trash2, ArrowLeft, Eye, Pause, Play } from 'lucide-react';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 import { Input } from '@components/ui/Input';
 import { Select } from '@components/ui/Select';
 import { Table } from '@components/ui/Table';

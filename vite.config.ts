@@ -18,6 +18,7 @@ export default defineConfig({
             '@services': path.resolve(__dirname, './resources/js/services'),
             '@utils': path.resolve(__dirname, './resources/js/utils'),
             '@types': path.resolve(__dirname, './resources/js/types'),
+            '@context': path.resolve(__dirname, './resources/js/context'),
         },
     },
     server: {

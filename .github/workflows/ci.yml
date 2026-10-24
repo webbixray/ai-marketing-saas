@@ -20,8 +20,8 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
-          ini-values: error_reporting=E_ALL^\^E_DEPRECATED
+          php-version: '8.4'
+          ini-values: error_reporting=E_ALL^\\^E_DEPRECATED
 
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist
@@ -50,3 +50,43 @@ jobs:
         with:
           name: test-results
           path: tests/
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run Pint Linter
+        run: vendor/bin/pint --dirty --format agent
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --level max
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run Security Audit
+        run: composer audit --update-lockfile
+
+      - name: Check for Known Vulnerabilities
+        run: |
+          # Run security checks on dependencies
+          composer show --latest 2>&1 | grep -i vulnerab || echo "No known vulnerabilities found"

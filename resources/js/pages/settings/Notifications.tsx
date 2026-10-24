@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Bell, Mail, BellOff, Save, CheckCircle } from 'lucide-react';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 import { Card, CardHeader, CardContent } from '@components/ui/Card';
 import { Badge } from '@components/ui/Badge';
 import { Switch } from '@components/ui/Switch';

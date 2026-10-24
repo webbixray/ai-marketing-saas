@@ -5,7 +5,7 @@ import {
     Plus, Filter, Calendar, Download, RefreshCw
 } from 'lucide-react';
 import { Card, CardHeader, CardContent, CardFooter } from '@components/ui/Card';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 import { Badge } from '@components/ui/Badge';
 import { Select } from '@components/ui/Select';
 import { Avatar } from '@components/ui/Avatar';

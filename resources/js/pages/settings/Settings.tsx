@@ -6,7 +6,7 @@ import { Billing } from './Billing';
 import { APIKeys } from './APIKeys';
 import { Notifications } from './Notifications';
 import { Card, CardHeader, CardContent } from '@components/ui/Card';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 
 const tabs = [
     { id: 'profile', label: 'Profile', icon: <UserIcon className="w-4 h-4" /> },

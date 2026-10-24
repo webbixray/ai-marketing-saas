@@ -181,4 +181,68 @@ class AiContentTest extends TestCase
         $this->getJson($this->apiUrl('/ai/status'))
             ->assertUnauthorized();
     }
+
+    public function test_ai_status_never_leaks_api_keys(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson($this->apiUrl('/ai/status'));
+        $response->assertOk();
+        $response->assertDontSee('sk-');
+        $response->assertDontSee('your-openai-api-key');
+    }
+
+    public function test_ai_generate_with_too_long_brief(): void
+    {
+        // Brief exceeding max:5000 chars should be rejected
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson($this->apiUrl('/ai/generate'), [
+                'type' => 'ad_copy',
+                'brief' => ' ' . str_repeat('A', 5001) . ' ',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['brief']);
+    }
+
+    public function test_ai_generation_can_be_listed_paginated(): void
+    {
+        config(['ai.llm.default_provider' => 'mock']);
+
+        // Create multiple generations with valid types
+        foreach (['ad_copy', 'email'] as $type) {
+            $this->actingAs($this->user, 'sanctum')
+                ->postJson($this->apiUrl('/ai/generate'), ['type' => $type, 'brief' => "brief for {$type}"])
+                ->assertCreated();
+        }
+
+        // Verify generations exist
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson($this->apiUrl('/ai/generations'))
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        // Test pagination reduces the visible set
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson($this->apiUrl('/ai/generations?per_page=1'))
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+
+    public function test_ai_provider_failure_logs_error_details(): void
+    {
+        config(['ai.llm.default_provider' => 'openai']);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson($this->apiUrl('/ai/generate'), [
+                'type' => 'email',
+                'brief' => 'Newsletter about the launch',
+            ]);
+
+        $response->assertStatus(502)
+            ->assertJsonStructure(['message']);
+
+        $row = DB::table('ai_generations')->latest('id')->first();
+        $this->assertSame('failed', $row->status);
+        $this->assertNotNull($row->error);
+        $this->assertStringContainsString('API', $row->error); // error should mention API issue
+    }
 }

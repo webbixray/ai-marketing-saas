@@ -6,7 +6,7 @@ import { useTheme } from '@context/ThemeContext';
 import { Dropdown, UserMenu } from '@components/ui/Dropdown';
 import { Avatar } from '@components/ui/Avatar';
 import { Badge } from '@components/ui/Badge';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 import { Tooltip } from '@components/ui/Tooltip';
 
 interface HeaderProps {

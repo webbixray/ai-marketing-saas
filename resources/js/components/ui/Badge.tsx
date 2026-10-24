@@ -103,7 +103,6 @@ const statusConfig: Record<string, { variant: BadgeProps['variant']; label: stri
     running: { variant: 'info', label: 'Running' },
     scheduled: { variant: 'info', label: 'Scheduled' },
     processing: { variant: 'info', label: 'Processing' },
-    completed: { variant: 'success', label: 'Completed' },
 };
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {

@@ -1,7 +1,7 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle, AlertCircle, Mail, ArrowLeft } from 'lucide-react';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 import { Card, CardHeader, CardContent, CardFooter } from '@components/ui/Card';
 import { AuthLayout } from '@components/layout/AuthLayout';
 import toast from 'react-hot-toast';

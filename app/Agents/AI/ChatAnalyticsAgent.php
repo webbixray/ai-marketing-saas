@@ -3,17 +3,17 @@
 namespace App\Agents\AI;
 
 use App\Agents\BaseAgent;
-use App\Contracts\AgentStatus;
+use App\Domain\Agent\AgentCapability;
 use App\Domain\Agent\AgentContext;
 use App\Domain\Agent\AgentResult;
-use App\Domain\Agent\AgentCapability;
-use App\Services\AI\LLMService;
 use App\Models\Campaign;
 use App\Models\Client;
+use App\Services\AI\LLMService;
+use App\Services\Intelligence\Analytics\AnomalyDetection;
+use App\Services\Intelligence\Analytics\AttributionModeling;
+use App\Services\Intelligence\Analytics\Forecasting;
+use App\Services\Intelligence\RecommendationEngine;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Collection;
-use Carbon\Carbon;
 
 class ChatAnalyticsAgent extends BaseAgent
 {
@@ -96,7 +96,7 @@ class ChatAnalyticsAgent extends BaseAgent
         }
 
         // Load context
-        $client = $clientId ? \App\Models\Client::find($clientId) : null;
+        $client = $clientId ? Client::find($clientId) : null;
         $campaign = $payload['campaign_id'] ? Campaign::find($payload['campaign_id']) : null;
 
         // Classify question intent
@@ -175,14 +175,14 @@ class ChatAnalyticsAgent extends BaseAgent
     protected function answerMetricsQuestion(string $question, Tenant $tenant, ?Client $client, ?Campaign $campaign, string $dateRange): array
     {
         $dates = $this->parseDateRange($dateRange);
-        
+
         $query = DB::table('campaign_performance_daily')
             ->where('date', '>=', $dates['start'])
             ->where('date', '<=', $dates['end']);
 
         if ($client) {
             $query->join('campaigns', 'campaign_performance_daily.campaign_id', '=', 'campaigns.id')
-                  ->where('campaigns.client_id', $client->id);
+                ->where('campaigns.client_id', $client->id);
         }
 
         if ($campaign) {
@@ -223,19 +223,19 @@ class ChatAnalyticsAgent extends BaseAgent
         $prevMetrics = DB::table('campaign_performance_daily')
             ->where('date', '>=', $prevDates['start'])
             ->where('date', '<=', $prevDates['end'])
-            ->when($client, fn($q) => $q->join('campaigns', 'campaign_performance_daily.campaign_id', '=', 'campaigns.id')
+            ->when($client, fn ($q) => $q->join('campaigns', 'campaign_performance_daily.campaign_id', '=', 'campaigns.id')
                 ->where('campaigns.client_id', $client->id))
-            ->when($campaign, fn($q) => $q->where('campaign_id', $campaign->id))
+            ->when($campaign, fn ($q) => $q->where('campaign_id', $campaign->id))
             ->selectRaw('SUM(spend) as spend, SUM(conversion_value) as revenue, SUM(conversions) as conversions')
             ->first();
 
         if ($prevMetrics && ($prevMetrics->spend ?? 0) > 0) {
             $spendChange = (($metrics->total_spend - $prevMetrics->spend) / $prevMetrics->spend) * 100;
             $revenueChange = (($metrics->total_revenue - $prevMetrics->revenue) / $prevMetrics->revenue) * 100;
-            
+
             $answer .= "\n📊 **vs Previous Period**\n";
-            $answer .= "- Spend: " . ($spendChange >= 0 ? '+' : '') . round($spendChange, 1) . "%\n";
-            $answer .= "- Revenue: " . ($revenueChange >= 0 ? '+' : '') . round($revenueChange, 1) . "%\n";
+            $answer .= '- Spend: '.($spendChange >= 0 ? '+' : '').round($spendChange, 1)."%\n";
+            $answer .= '- Revenue: '.($revenueChange >= 0 ? '+' : '').round($revenueChange, 1)."%\n";
         }
 
         return [
@@ -253,12 +253,12 @@ class ChatAnalyticsAgent extends BaseAgent
     {
         // Extract entities to compare from question
         // This is simplified - in production use NER
-        
+
         $dates = $this->parseDateRange($dateRange);
-        
+
         // Get all campaigns for client
         $campaigns = Campaign::where('tenant_id', $tenant->id)
-            ->when($client, fn($q) => $q->where('client_id', $client->id))
+            ->when($client, fn ($q) => $q->where('client_id', $client->id))
             ->where('status', 'active')
             ->get();
 
@@ -291,9 +291,11 @@ class ChatAnalyticsAgent extends BaseAgent
         })->sortByDesc('roas')->values();
 
         $answer = "📊 **Campaign Comparison** ({$dateRange})\n\n";
-        
+
         foreach ($metrics as $i => $m) {
-            $medal = match($i) { 0 => '🥇', 1 => '🥈', 2 => '🥉', default => ($i+1) . '.' };
+            $medal = match ($i) {
+                0 => '🥇', 1 => '🥈', 2 => '🥉', default => ($i + 1).'.'
+            };
             $answer .= "{$medal} **{$m['campaign']}**\n";
             $answer .= "   ROAS: {$m['roas']}x | CPA: \${$m['cpa']} | Spend: \${$m['spend']} | Revenue: \${$m['revenue']}\n\n";
         }
@@ -304,7 +306,7 @@ class ChatAnalyticsAgent extends BaseAgent
         $answer .= "💡 **Insights**:\n";
         $answer .= "- **Top performer**: {$best['campaign']} (ROAS: {$best['roas']}x)\n";
         $answer .= "- **Needs attention**: {$worst['campaign']} (ROAS: {$worst['roas']}x)\n";
-        $answer .= "- **Gap**: " . round(($best['roas'] - $worst['roas']) / max(0.01, $worst['roas']) * 100, 0) . "% difference in ROAS\n";
+        $answer .= '- **Gap**: '.round(($best['roas'] - $worst['roas']) / max(0.01, $worst['roas']) * 100, 0)."% difference in ROAS\n";
 
         return [
             'type' => 'comparison',
@@ -320,13 +322,13 @@ class ChatAnalyticsAgent extends BaseAgent
     protected function answerTrendQuestion(string $question, Tenant $tenant, ?Client $client, ?Campaign $campaign, string $dateRange): array
     {
         $dates = $this->parseDateRange($dateRange);
-        
+
         $query = DB::table('campaign_performance_daily')
             ->whereBetween('date', [$dates['start'], $dates['end']]);
 
         if ($client) {
             $query->join('campaigns', 'campaign_performance_daily.campaign_id', '=', 'campaigns.id')
-                  ->where('campaigns.client_id', $client->id);
+                ->where('campaigns.client_id', $client->id);
         }
 
         if ($campaign) {
@@ -341,14 +343,14 @@ class ChatAnalyticsAgent extends BaseAgent
             SUM(clicks) as clicks,
             SUM(impressions) as impressions
         ')
-        ->groupBy('date')
-        ->orderBy('date')
-        ->get();
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
 
         if ($dailyData->isEmpty()) {
             return [
                 'type' => 'trend',
-                'text' => "No data available for the selected period.",
+                'text' => 'No data available for the selected period.',
                 'data' => [],
                 'confidence' => 0.3,
             ];
@@ -364,7 +366,7 @@ class ChatAnalyticsAgent extends BaseAgent
 
         $answer = "📈 **Performance Trend** ({$dateRange})\n\n";
         $answer .= "**Overall Trend**: {$trendDirection} ({$trendPct}%)\n\n";
-        
+
         // Weekly breakdown
         $weeks = $dailyData->chunk(7)->map(function ($week) {
             return [
@@ -377,7 +379,7 @@ class ChatAnalyticsAgent extends BaseAgent
 
         $answer .= "**Weekly Breakdown**:\n";
         foreach ($weeks as $i => $week) {
-            $answer .= "- Week " . ($i+1) . " ({$week['week_start']}): Revenue \${$week['revenue']} | Spend \${$week['spend']} | ROAS {$week['roas']}x\n";
+            $answer .= '- Week '.($i + 1)." ({$week['week_start']}): Revenue \${$week['revenue']} | Spend \${$week['spend']} | ROAS {$week['roas']}x\n";
         }
 
         // Calculate growth rate
@@ -402,32 +404,36 @@ class ChatAnalyticsAgent extends BaseAgent
     protected function answerAnomalyQuestion(string $question, Tenant $tenant, ?Client $client, ?Campaign $campaign, string $dateRange): array
     {
         // Use the anomaly detection service
-        $anomalyService = new \App\Services\Intelligence\Analytics\AnomalyDetection($client ?? Client::firstWhere('tenant_id', $tenant->id), []);
+        $anomalyService = new AnomalyDetection($client ?? Client::firstWhere('tenant_id', $tenant->id), []);
         $result = $anomalyService->detectAllAnomalies();
 
         if ($result['total_anomalies'] === 0) {
             return [
                 'type' => 'anomaly',
-                'text' => "✅ No anomalies detected in the current period. All metrics are within normal ranges.",
+                'text' => '✅ No anomalies detected in the current period. All metrics are within normal ranges.',
                 'data' => $result,
                 'confidence' => 0.9,
             ];
         }
 
         $answer = "🚨 **Anomalies Detected**: {$result['total_anomalies']} issues found\n\n";
-        
+
         $bySeverity = $result['by_severity'];
         $answer .= "**Severity Breakdown**:\n";
         foreach (['critical', 'high', 'medium', 'low'] as $sev) {
             if (($bySeverity[$sev] ?? 0) > 0) {
-                $emoji = match($sev) { 'critical' => '🔴', 'high' => '🟠', 'medium' => '🟡', default => '🟢' };
+                $emoji = match ($sev) {
+                    'critical' => '🔴', 'high' => '🟠', 'medium' => '🟡', default => '🟢'
+                };
                 $answer .= "- {$emoji} {$sev}: {$bySeverity[$sev]}\n";
             }
         }
 
         $answer .= "\n**Top Issues**:\n";
         foreach (array_slice($result['anomalies'], 0, 5) as $anomaly) {
-            $emoji = match($anomaly['severity']) { 'critical' => '🔴', 'high' => '🟠', 'medium' => '🟡', default => '🟢' };
+            $emoji = match ($anomaly['severity']) {
+                'critical' => '🔴', 'high' => '🟠', 'medium' => '🟡', default => '🟢'
+            };
             $answer .= "{$emoji} **{$anomaly['message']}** ({$anomaly['entity_type']} #{$anomaly['entity_id']})\n";
         }
 
@@ -444,8 +450,8 @@ class ChatAnalyticsAgent extends BaseAgent
      */
     protected function answerForecastQuestion(string $question, Tenant $tenant, ?Client $client, ?Campaign $campaign, string $dateRange): array
     {
-        $forecasting = new \App\Services\Intelligence\Analytics\Forecasting($client ?? Client::firstWhere('tenant_id', $tenant->id));
-        
+        $forecasting = new Forecasting($client ?? Client::firstWhere('tenant_id', $tenant->id));
+
         if ($campaign) {
             $result = $forecasting->forecastCampaign($campaign->id, 30);
         } else {
@@ -462,14 +468,24 @@ class ChatAnalyticsAgent extends BaseAgent
         }
 
         $answer = "🔮 **30-Day Forecast**\n\n";
+        $agg_spend_yhat_var = $agg['spend'][0]['yhat'] ?? 'N/A';
+        $agg_revenue_yhat_var = $agg['revenue'][0]['yhat'] ?? 'N/A';
+        $agg_roas_yhat_var = $agg['roas'][0]['yhat'] ?? 'N/A';
+        $last_forecast_yhat = $lastForecast['yhat'] ?? 'N/A';
+        $roas_forecast_yhat = $forecast['forecasts']['roas'][count($forecast['forecasts']['roas']) - 1]['yhat'] ?? 'N/A';
+        $agg_conversions_yhat_var = $agg['conversions'][0]['yhat'] ?? 'N/A';
+        $last_forecast_yhat_var = $lastForecast['yhat'] ?? 'N/A';
+        $roas_forecast_yhat_var = $forecast['forecasts']['roas'][count($forecast['forecasts']['roas']) - 1]['yhat'] ?? 'N/A';
 
         if (isset($result['aggregate'])) {
             $agg = $result['aggregate'];
             $answer .= "**Aggregate Forecast (All Campaigns)**:\n";
-            $answer .= "- **Projected Spend**: \${$agg['spend'][0]['yhat'] ?? 'N/A'}\n";
-            $answer .= "- **Projected Revenue**: \${$agg['revenue'][0]['yhat'] ?? 'N/A'}\n";
-            $answer .= "- **Projected ROAS**: {$agg['roas'][0]['yhat'] ?? 'N/A'}x\n";
-            $answer .= "- **Projected Conversions**: {$agg['conversions'][0]['yhat'] ?? 'N/A'}\n\n";
+            $answer .= "- **Projected Spend**: {$agg_spend_yhat_var}\n";
+            $answer .= "- **Projected Revenue**: {$agg_revenue_yhat_var}\n";
+            $answer .= "- **Projected ROAS**: {$agg_roas_yhat_var}x\n";
+            $answer .= "- **Projected Conversions**: {$agg_conversions_yhat_var}\n\n";
+            $last_forecast_yhat_var = $lastForecast['yhat'] ?? 'N/A';
+            $roas_forecast_yhat_var = $forecast['forecasts']['roas'][count($forecast['forecasts']['roas']) - 1]['yhat'] ?? 'N/A';
         }
 
         if (isset($result['individual'])) {
@@ -477,8 +493,10 @@ class ChatAnalyticsAgent extends BaseAgent
             foreach ($result['individual'] as $cid => $forecast) {
                 $campaign = Campaign::find($cid);
                 if ($campaign) {
-                    $lastForecast = end($forecast['forecasts']['revenue'] ?? []);
-                    $answer .= "- {$campaign->name}: Projected Rev \${$lastForecast['yhat'] ?? 'N/A'} | ROAS {$forecast['forecasts']['roas'][count($forecast['forecasts']['roas'])-1]['yhat'] ?? 'N/A'}x\n";
+                    // Last forecast revenue value
+                    $last_forecast_var = $forecast['forecasts']['revenue'] ?? [];
+                    $lastForecast = end($last_forecast_var);
+                    $answer .= "- {$campaign->name}: Projected Rev \${$last_forecast_yhat_var} | ROAS {$roas_forecast_yhat_var}x\n";
                 }
             }
         }
@@ -498,14 +516,14 @@ class ChatAnalyticsAgent extends BaseAgent
      */
     protected function answerAttributionQuestion(string $question, Tenant $tenant, ?Client $client, ?Campaign $campaign, string $dateRange): array
     {
-        $attribution = new \App\Services\Intelligence\Analytics\AttributionModeling($client ?? Client::firstWhere('tenant_id', $tenant->id));
+        $attribution = new AttributionModeling($client ?? Client::firstWhere('tenant_id', $tenant->id));
         $result = $attribution->compareModels(
             $this->parseDateRange($dateRange)['start'],
             $this->parseDateRange($dateRange)['end']
         );
 
         $answer = "🎯 **Attribution Analysis** ({$dateRange})\n\n";
-        
+
         $bestModel = $result['recommended_model'] ?? 'data_driven';
         $answer .= "**Recommended Model**: {$bestModel}\n\n";
 
@@ -519,7 +537,7 @@ class ChatAnalyticsAgent extends BaseAgent
         if (isset($result['correlations'])) {
             $answer .= "\n**Model Correlations**:\n";
             foreach ($result['correlations'] as $pair => $corr) {
-                $answer .= "- {$pair}: " . ($corr !== null ? round($corr * 100, 1) . '%' : 'N/A') . "\n";
+                $answer .= "- {$pair}: ".($corr !== null ? round($corr * 100, 1).'%' : 'N/A')."\n";
             }
         }
 
@@ -536,35 +554,40 @@ class ChatAnalyticsAgent extends BaseAgent
      */
     protected function answerRecommendationQuestion(string $question, Tenant $tenant, ?Client $client, ?Campaign $campaign, string $dateRange): array
     {
-        if (!$client) {
+        if (! $client) {
             return [
                 'type' => 'recommendation',
-                'text' => "Please specify a client to get personalized recommendations.",
+                'text' => 'Please specify a client to get personalized recommendations.',
                 'data' => [],
                 'confidence' => 0.5,
             ];
         }
 
-        $engine = new \App\Services\Intelligence\RecommendationEngine($client);
+        $engine = new RecommendationEngine($client);
         $recommendations = $engine->generateAllRecommendations();
 
         $answer = "💡 **Personalized Recommendations** for {$client->name}\n\n";
 
         $totalRecs = 0;
         foreach ($recommendations as $category => $recs) {
-            if (empty($recs)) continue;
-            
-            $answer .= "**" . ucfirst($category) . "** (" . count($recs) . " recommendations)\n";
+            if (empty($recs)) {
+                continue;
+            }
+
+            $answer .= '**'.ucfirst($category).'** ('.count($recs)." recommendations)\n";
             foreach (array_slice($recs, 0, 2) as $rec) {
-                $priorityEmoji = match($rec['priority'] ?? 'medium') { 'critical' => '🔴', 'high' => '🟠', 'medium' => '🟡', default => '🟢' };
+                $rec_confidence_var = $rec['confidence'];
+                $priorityEmoji = match ($rec['priority'] ?? 'medium') {
+                    'critical' => '🔴', 'high' => '🟠', 'medium' => '🟡', default => '🟢'
+                };
                 $answer .= "{$priorityEmoji} **{$rec['title']}**: {$rec['description']}\n";
                 $answer .= "   → Action: {$rec['action']}\n";
-                $answer .= "   → Impact: {$rec['estimated_impact']} (Confidence: {$rec['confidence'] * 100}%)\n\n";
+                $answer .= "   → Impact: {$rec['estimated_impact']} (Confidence: {$rec['confidence']})\n\n";
             }
             $totalRecs += count($recs);
         }
 
-        $answer .= "\n**Total**: {$totalRecs} recommendations across " . count(array_filter($recommendations)) . " categories";
+        $answer .= "\n**Total**: {$totalRecs} recommendations across ".count(array_filter($recommendations)).' categories';
 
         return [
             'type' => 'recommendation',
@@ -591,7 +614,7 @@ class ChatAnalyticsAgent extends BaseAgent
             $answer .= "4. **Competition** - New competitors bidding up costs\n";
             $answer .= "5. **Tracking issues** - Pixel/CAPI problems underreporting conversions\n";
             $answer .= "6. **Landing page changes** - Conversion rate dropped\n\n";
-            $answer .= "💡 **Quick check**: Compare ROAS by campaign, creative, and audience to isolate the issue.";
+            $answer .= '💡 **Quick check**: Compare ROAS by campaign, creative, and audience to isolate the issue.';
         } elseif (str_contains(strtolower($question), 'why') && str_contains(strtolower($question), 'cpa')) {
             $answer .= "CPA (Cost Per Acquisition) measures cost to acquire one customer.\n\n";
             $answer .= "**Formula**: Ad Spend ÷ Conversions\n\n";
@@ -599,7 +622,7 @@ class ChatAnalyticsAgent extends BaseAgent
             $answer .= "1. **Higher CPMs** - Platform costs increased\n";
             $answer .= "2. **Lower conversion rate** - Creative or landing page issues\n";
             $answer .= "3. **Audience mismatch** - Targeting wrong people\n";
-            $answer .= "4. **Funnel friction** - Checkout/lead form problems";
+            $answer .= '4. **Funnel friction** - Checkout/lead form problems';
         } else {
             $answer .= "I can explain marketing metrics, campaign performance, or strategy concepts. Try asking:\n";
             $answer .= "- \"Why did my ROAS drop last week?\"\n";
@@ -629,8 +652,8 @@ Question: {$question}
 
 Context:
 - Tenant: {$tenant->name}
-- Client: " . ($client?->name ?? 'Not specified') . "
-- Campaign: " . ($campaign?->name ?? 'Not specified') . "
+- Client: ".($client?->name ?? 'Not specified').'
+- Campaign: '.($campaign?->name ?? 'Not specified')."
 - Date Range: {$dateRange}
 
 Provide a helpful, concise answer. If you need more data, explain what you'd need.
@@ -677,6 +700,7 @@ Provide a helpful, concise answer. If you need more data, explain what you'd nee
     {
         $current = $this->parseDateRange($range);
         $days = $current['start']->diffInDays($current['end']) + 1;
+
         return [
             'start' => $current['start']->copy()->subDays($days),
             'end' => $current['start']->copy()->subDay(),
@@ -745,20 +769,22 @@ Provide a helpful, concise answer. If you need more data, explain what you'd nee
     protected function generateVisualization(string $intent, array $answer, string $dateRange): ?array
     {
         $data = $answer['data'] ?? [];
-        
-        if (empty($data)) return null;
+
+        if (empty($data)) {
+            return null;
+        }
 
         return match ($intent) {
             'metrics' => [
                 'type' => 'kpi_cards',
                 'title' => 'Key Metrics',
                 'data' => [
-                    ['label' => 'Spend', 'value' => '$' . number_format($data->total_spend ?? 0, 2)],
-                    ['label' => 'Revenue', 'value' => '$' . number_format($data->total_revenue ?? 0, 2)],
-                    ['label' => 'ROAS', 'value' => ($data->avg_roas ?? 0) . 'x'],
+                    ['label' => 'Spend', 'value' => '$'.number_format($data->total_spend ?? 0, 2)],
+                    ['label' => 'Revenue', 'value' => '$'.number_format($data->total_revenue ?? 0, 2)],
+                    ['label' => 'ROAS', 'value' => ($data->avg_roas ?? 0).'x'],
                     ['label' => 'Conversions', 'value' => $data->total_conversions ?? 0],
-                    ['label' => 'CPA', 'value' => '$' . number_format($data->avg_cpa ?? 0, 2)],
-                    ['label' => 'CTR', 'value' => round((($data->total_clicks ?? 0) / max(1, $data->total_impressions ?? 1)) * 100, 2) . '%'],
+                    ['label' => 'CPA', 'value' => '$'.number_format($data->avg_cpa ?? 0, 2)],
+                    ['label' => 'CTR', 'value' => round((($data->total_clicks ?? 0) / max(1, $data->total_impressions ?? 1)) * 100, 2).'%'],
                 ],
             ],
             'trend' => [
@@ -797,7 +823,5 @@ Provide a helpful, concise answer. If you need more data, explain what you'd nee
         ], $config);
     }
 
-    protected function onShutdown(): void
-    {
-    }
+    protected function onShutdown(): void {}
 }

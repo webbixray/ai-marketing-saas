@@ -6,23 +6,26 @@ use App\Contracts\AgentContract;
 use App\Contracts\AgentStatus;
 use App\Domain\Agent\AgentContext;
 use App\Domain\Agent\AgentResult;
-use App\Domain\Agent\AgentCapability;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class AgentOrchestrator
 {
     protected Collection $agents;
+
     protected Collection $agentRegistry;
+
     protected array $executionHistory = [];
+
     protected int $maxConcurrentAgents = 5;
+
     protected int $defaultTimeout = 300;
 
     public function __construct()
     {
-        $this->agents = new Collection();
-        $this->agentRegistry = new Collection();
+        $this->agents = new Collection;
+        $this->agentRegistry = new Collection;
     }
 
     /**
@@ -38,7 +41,7 @@ class AgentOrchestrator
             'registered_at' => now()->toISOString(),
         ]);
 
-        Log::info("Agent registered", ['agent_id' => $agent->getId(), 'name' => $agent->getName()]);
+        Log::info('Agent registered', ['agent_id' => $agent->getId(), 'name' => $agent->getName()]);
 
         return $this;
     }
@@ -53,8 +56,10 @@ class AgentOrchestrator
             $agent->shutdown();
             $this->agents->forget($agentId);
             $this->agentRegistry->forget($agentId);
+
             return true;
         }
+
         return false;
     }
 
@@ -80,7 +85,7 @@ class AgentOrchestrator
     public function findAgentsForTask(string $taskType, AgentContext $context): Collection
     {
         return $this->agents->filter(function ($agent) use ($taskType, $context) {
-            return $agent->canHandle($taskType, $context) 
+            return $agent->canHandle($taskType, $context)
                 && $agent->getStatus() === AgentStatus::READY;
         });
     }
@@ -91,8 +96,8 @@ class AgentOrchestrator
     public function executeAgent(string $agentId, AgentContext $context): AgentResult
     {
         $agent = $this->getAgent($agentId);
-        
-        if (!$agent) {
+
+        if (! $agent) {
             return AgentResult::failure("Agent {$agentId} not found");
         }
 
@@ -100,7 +105,7 @@ class AgentOrchestrator
             return AgentResult::failure("Agent {$agentId} is not ready (status: {$agent->getStatus()->value})");
         }
 
-        Log::info("Executing agent", [
+        Log::info('Executing agent', [
             'agent_id' => $agentId,
             'correlation_id' => $context->correlationId,
         ]);
@@ -114,7 +119,7 @@ class AgentOrchestrator
     public function executeParallel(array $agentIds, AgentContext $context): array
     {
         $results = [];
-        
+
         foreach ($agentIds as $agentId) {
             $agent = $this->getAgent($agentId);
             if ($agent && $agent->getStatus() === AgentStatus::READY) {
@@ -148,8 +153,8 @@ class AgentOrchestrator
             }
 
             // Stop pipeline on failure if configured
-            if (!$result->success) {
-                Log::warning("Pipeline stopped due to agent failure", [
+            if (! $result->success) {
+                Log::warning('Pipeline stopped due to agent failure', [
                     'failed_agent' => $agentId,
                     'error' => $result->error,
                 ]);
@@ -166,8 +171,8 @@ class AgentOrchestrator
     public function executeWorkflow(string $workflowId, AgentContext $context): AgentResult
     {
         $workflow = $this->getWorkflow($workflowId);
-        
-        if (!$workflow) {
+
+        if (! $workflow) {
             return AgentResult::failure("Workflow {$workflowId} not found");
         }
 
@@ -186,8 +191,9 @@ class AgentOrchestrator
             // Check condition if present
             if (isset($step['condition'])) {
                 $shouldExecute = $this->evaluateCondition($step['condition'], $currentContext);
-                if (!$shouldExecute) {
-                    Log::info("Workflow step skipped", ['step' => $step['id'], 'reason' => 'condition_not_met']);
+                if (! $shouldExecute) {
+                    Log::info('Workflow step skipped', ['step' => $step['id'], 'reason' => 'condition_not_met']);
+
                     continue;
                 }
             }
@@ -196,9 +202,9 @@ class AgentOrchestrator
             $result = $this->executeAgent($agentId, $currentContext);
             $results[$step['id']] = $result;
 
-            if (!$result->success) {
+            if (! $result->success) {
                 // Handle failure based on step config
-                if ($step['on_failure'] ?? 'stop') === 'stop') {
+                if (($step['on_failure'] ?? 'stop') === 'stop') {
                     return AgentResult::failure(
                         "Workflow step {$step['id']} failed: {$result->error}",
                         ['results' => $results]
@@ -239,8 +245,8 @@ class AgentOrchestrator
             'gte' => $actualValue >= $value,
             'lt' => $actualValue < $value,
             'lte' => $actualValue <= $value,
-            'in' => in_array($actualValue, (array)$value),
-            'not_in' => !in_array($actualValue, (array)$value),
+            'in' => in_array($actualValue, (array) $value),
+            'not_in' => ! in_array($actualValue, (array) $value),
             'contains' => is_string($actualValue) && str_contains($actualValue, $value),
             default => false,
         };
@@ -252,6 +258,7 @@ class AgentOrchestrator
     public function registerWorkflow(string $workflowId, array $workflow): self
     {
         Cache::put("workflow:{$workflowId}", $workflow);
+
         return $this;
     }
 
@@ -302,7 +309,7 @@ class AgentOrchestrator
                 'stats' => $agent->getStats(),
             ];
 
-            if (!$health['agents'][$id]['healthy']) {
+            if (! $health['agents'][$id]['healthy']) {
                 $health['healthy'] = false;
             }
 
@@ -320,7 +327,7 @@ class AgentOrchestrator
         foreach ($this->agents as $agent) {
             $agent->shutdown();
         }
-        $this->agents = new Collection();
-        $this->agentRegistry = new Collection();
+        $this->agents = new Collection;
+        $this->agentRegistry = new Collection;
     }
 }

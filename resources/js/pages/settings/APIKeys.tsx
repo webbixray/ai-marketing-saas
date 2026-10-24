@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus, Copy, Eye, EyeOff, Trash2, MoreHorizontal, Key, Calendar, Clock } from 'lucide-react';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 import { Input } from '@components/ui/Input';
 import { Select } from '@components/ui/Select';
 import { Table } from '@components/ui/Table';

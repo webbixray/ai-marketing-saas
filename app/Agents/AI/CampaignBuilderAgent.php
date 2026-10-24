@@ -3,18 +3,14 @@
 namespace App\Agents\AI;
 
 use App\Agents\BaseAgent;
-use App\Contracts\AgentStatus;
+use App\Domain\Agent\AgentCapability;
 use App\Domain\Agent\AgentContext;
 use App\Domain\Agent\AgentResult;
-use App\Domain\Agent\AgentCapability;
 use App\Models\Campaign;
 use App\Models\Client;
 use App\Models\User;
 use App\Services\AI\LLMService;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
-use Carbon\Carbon;
 
 class CampaignBuilderAgent extends BaseAgent
 {
@@ -105,8 +101,8 @@ class CampaignBuilderAgent extends BaseAgent
             $client = Client::where('id', $clientId)
                 ->where('tenant_id', $tenant->id)
                 ->first();
-            
-            if (!$client) {
+
+            if (! $client) {
                 return AgentResult::failure('Client not found');
             }
         }
@@ -144,7 +140,7 @@ class CampaignBuilderAgent extends BaseAgent
     protected function buildCampaigns(string $description, ?Client $client, array $options, Tenant $tenant): array
     {
         $schema = $this->getCampaignSchema($options);
-        
+
         $prompt = $this->buildCampaignPrompt($description, $client, $options);
 
         $result = $this->llm->completeJson($prompt, $schema, [
@@ -156,13 +152,15 @@ class CampaignBuilderAgent extends BaseAgent
 
         if (isset($result['error'])) {
             Log::error('Campaign generation failed', ['error' => $result['error']]);
+
             return [];
         }
 
         $campaigns = $result['content']['campaigns'] ?? [];
-        
+
         // Limit number of campaigns
         $maxCampaigns = $this->config['max_campaigns_per_request'] ?? 3;
+
         return array_slice($campaigns, 0, $maxCampaigns);
     }
 
@@ -174,10 +172,10 @@ class CampaignBuilderAgent extends BaseAgent
         $clientInfo = $client ? "
 Client Information:
 - Name: {$client->name}
-- Industry: {$client->industry ?? 'Not specified'}
-- Monthly Budget: \${$client->monthly_budget ?? 'Not set'}
-- Brand Guidelines: " . json_encode($client->branding ?? []) . "
-" : "";
+- Industry: {$client->industry_var}
+- Monthly Budget: \${$client->monthly_budget_var}
+- Brand Guidelines: ".json_encode($client->branding !== null ? $client->branding : []).'
+' : '';
 
         $platformOptions = $this->getPlatformOptions();
         $objectiveOptions = $this->getObjectiveOptions();
@@ -190,9 +188,9 @@ User Description: {$description}
 
 {$clientInfo}
 
-Available Platforms: " . implode(', ', array_keys($platformOptions)) . "
-Available Objectives: " . implode(', ', array_keys($objectiveOptions)) . "
-Available Audience Types: " . implode(', ', array_keys($audienceOptions)) . "
+Available Platforms: ".implode(', ', array_keys($platformOptions)).'
+Available Objectives: '.implode(', ', array_keys($objectiveOptions)).'
+Available Audience Types: '.implode(', ', array_keys($audienceOptions)).'
 
 Generate 1-3 complete campaign plans. Each campaign should include:
 1. Campaign name (compelling, descriptive)
@@ -210,37 +208,37 @@ Generate 1-3 complete campaign plans. Each campaign should include:
 
 Return as JSON with this structure:
 {
-  \"campaigns\": [
+  "campaigns": [
     {
-      \"name\": \"string\",
-      \"slug\": \"string\",
-      \"description\": \"string\",
-      \"platform\": \"string\",
-      \"objective\": \"string\",
-      \"type\": \"string\",
-      \"status\": \"draft\",
-      \"budget\": number,
-      \"daily_budget\": number,
-      \"lifetime_budget\": number,
-      \"bidding_strategy\": \"string\",
-      \"bid_amount\": number,
-      \"start_date\": \"YYYY-MM-DD\",
-      \"end_date\": \"YYYY-MM-DD\",
-      \"targeting\": {\"demographics\": [], \"interests\": [], \"behaviors\": []},
-      \"geo_targeting\": {\"countries\": [], \"regions\": []},
-      \"audience_targeting\": {\"age_min\": 18, \"age_max\": 65, \"genders\": []},
-      \"creatives\": [{\"headline\": \"\", \"body\": \"\", \"cta\": \"\", \"media_suggestions\": []}],
-      \"ad_copy_variants\": [{\"headline\": \"\", \"body\": \"\", \"cta\": \"\"}],
-      \"landing_page_url\": \"\",
-      \"utm_parameters\": {\"utm_source\": \"\", \"utm_medium\": \"\", \"utm_campaign\": \"\"},
-      \"schedule\": {\"days\": [], \"hours\": []},
-      \"automation_rules\": [],
-      \"tags\": [],
-      \"campaign_group\": \"string\"
+      "name": "string",
+      "slug": "string",
+      "description": "string",
+      "platform": "string",
+      "objective": "string",
+      "type": "string",
+      "status": "draft",
+      "budget": number,
+      "daily_budget": number,
+      "lifetime_budget": number,
+      "bidding_strategy": "string",
+      "bid_amount": number,
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD",
+      "targeting": {"demographics": [], "interests": [], "behaviors": []},
+      "geo_targeting": {"countries": [], "regions": []},
+      "audience_targeting": {"age_min": 18, "age_max": 65, "genders": []},
+      "creatives": [{"headline": "", "body": "", "cta": "", "media_suggestions": []}],
+      "ad_copy_variants": [{"headline": "", "body": "", "cta": ""}],
+      "landing_page_url": "",
+      "utm_parameters": {"utm_source": "", "utm_medium": "", "utm_campaign": ""},
+      "schedule": {"days": [], "hours": []},
+      "automation_rules": [],
+      "tags": [],
+      "campaign_group": "string"
     }
   ]
 }
-";
+';
     }
 
     /**
@@ -248,7 +246,7 @@ Return as JSON with this structure:
      */
     protected function getSystemPrompt(): string
     {
-        return "You are an expert digital marketing campaign strategist with 15+ years of experience across Meta, Google, LinkedIn, TikTok, and programmatic advertising. You create data-driven, ROI-focused campaigns that convert. You understand platform-specific best practices, audience targeting nuances, creative psychology, and budget optimization. Always produce campaigns that are actionable, measurable, and aligned with business objectives.";
+        return 'You are an expert digital marketing campaign strategist with 15+ years of experience across Meta, Google, LinkedIn, TikTok, and programmatic advertising. You create data-driven, ROI-focused campaigns that convert. You understand platform-specific best practices, audience targeting nuances, creative psychology, and budget optimization. Always produce campaigns that are actionable, measurable, and aligned with business objectives.';
     }
 
     /**
@@ -308,7 +306,7 @@ Return as JSON with this structure:
                 'tenant_id' => $tenant->id,
                 'client_id' => $client?->id,
                 'name' => $data['name'],
-                'slug' => $data['slug'] ?? Str::slug($data['name']) . '-' . Str::random(6),
+                'slug' => $data['slug'] ?? Str::slug($data['name']).'-'.Str::random(6),
                 'description' => $data['description'] ?? '',
                 'status' => $data['status'] ?? 'draft',
                 'approval_status' => 'draft',
@@ -340,6 +338,7 @@ Return as JSON with this structure:
             return $campaign;
         } catch (\Throwable $e) {
             Log::error('Failed to save campaign', ['error' => $e->getMessage(), 'data' => $data]);
+
             return null;
         }
     }
@@ -400,7 +399,5 @@ Return as JSON with this structure:
         ], $config);
     }
 
-    protected function onShutdown(): void
-    {
-    }
+    protected function onShutdown(): void {}
 }

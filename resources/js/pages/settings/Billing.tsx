@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CreditCard, Zap, Download, Settings, ArrowUpRight, CheckCircle } from 'lucide-react';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 import { Card, CardHeader, CardContent, CardFooter } from '@components/ui/Card';
 import { Badge } from '@components/ui/Badge';
 import { Tabs, TabPanel } from '@components/ui/Tabs';

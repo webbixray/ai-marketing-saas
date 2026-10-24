@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus, Search, MoreVertical, Edit, Trash2, Shield, User, Mail, Send } from 'lucide-react';
-import { Button } from '@components/ui/Button';
+import Button from '@components/ui/Button';
 import { Input } from '@components/ui/Input';
 import { Select } from '@components/ui/Select';
 import { Table } from '@components/ui/Table';
