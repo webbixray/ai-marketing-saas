@@ -25,7 +25,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'name',
         'email',
         'password',
+        'email_verified_at',
         'tenant_id',
+        'is_active',
         'avatar',
         'email_verification_token',
         'email_verification_sent_at',
@@ -47,6 +49,9 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'is_active' => 'boolean',
+        'password_reset_sent_at' => 'datetime',
+        'email_verification_sent_at' => 'datetime',
     ];
 
     /**
@@ -98,6 +103,14 @@ class User extends Authenticatable implements MustVerifyEmail
     public function notificationPreferences()
     {
         return $this->hasMany(NotificationPreference::class);
+    }
+
+    /**
+     * Get the user's tenant (null for tenant-less platform admins).
+     */
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class);
     }
 
     /**

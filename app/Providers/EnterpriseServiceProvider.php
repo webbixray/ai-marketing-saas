@@ -8,6 +8,7 @@ use App\Services\Enterprise\WhiteLabelService;
 use App\Services\Enterprise\AuditComplianceService;
 use App\Services\Enterprise\AdvancedRbacService;
 use App\Services\Enterprise\MarketplaceService;
+use App\Models\Tenant;
 use Illuminate\Support\ServiceProvider;
 
 class EnterpriseServiceProvider extends ServiceProvider
@@ -17,12 +18,6 @@ class EnterpriseServiceProvider extends ServiceProvider
         // SSO Service
         $this->app->singleton(SsoService::class, function ($app) {
             return new SsoService(config('enterprise.sso', []));
-        });
-
-        // SCIM Service
-        $this->app->singleton(ScimService::class, function ($app) {
-            // SCIM service needs tenant, so we'll bind it as a factory
-            return null; // Will be resolved per-request
         });
 
         // White Label Service
@@ -56,12 +51,28 @@ class EnterpriseServiceProvider extends ServiceProvider
         // Load migrations
         $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
 
-        // Register SCIM service factory
+        // Register SCIM service factory.
+        // The ScimAuth middleware binds the authenticated tenant (Tenant::class
+        // and 'tenant' aliases) for SCIM requests. Fallback: the authenticated
+        // user's own tenant. Previously this factory called app('tenant')
+        // unconditionally — that alias was never bound, so every SCIM request
+        // 500'd with BindingResolutionException.
         $this->app->bind(ScimService::class, function ($app) {
-            return new ScimService(
-                auth()->user()->tenant ?? app('tenant'),
-                config('enterprise.scim', [])
-            );
+            $tenant = null;
+
+            if ($app->bound(Tenant::class)) {
+                $tenant = $app->make(Tenant::class);
+            } elseif ($app->bound('tenant')) {
+                $tenant = $app->make('tenant');
+            } elseif (auth()->user()?->tenant_id) {
+                $tenant = Tenant::withoutGlobalScopes()->find(auth()->user()->tenant_id);
+            }
+
+            if (! $tenant) {
+                throw new \RuntimeException('SCIM tenant could not be resolved');
+            }
+
+            return new ScimService($tenant, config('enterprise.scim', []));
         });
     }
 }

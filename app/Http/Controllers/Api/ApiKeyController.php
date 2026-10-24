@@ -71,6 +71,9 @@ class ApiKeyController extends Controller
 
         $apiKey = ApiKey::create($validated);
 
+        // Never expose the key hash in API responses
+        $apiKey->key_hash = null;
+
         // Return the raw key only once
         return response()->json([
             'api_key' => $apiKey,

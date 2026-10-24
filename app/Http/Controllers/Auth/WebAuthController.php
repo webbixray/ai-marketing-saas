@@ -85,6 +85,15 @@ class WebAuthController extends Controller
         $credentials = $request->only('email', 'password');
 
         if (Auth::attempt($credentials)) {
+            // Deactivated accounts (admin toggle) cannot log in
+            if (! (bool) Auth::user()->is_active) {
+                Auth::logout();
+
+                return back()->withErrors([
+                    'email' => 'This account has been deactivated. Contact your administrator.',
+                ])->onlyInput('email');
+            }
+
             // Regenerate session to prevent session fixation
             $request->session()->regenerate();
 

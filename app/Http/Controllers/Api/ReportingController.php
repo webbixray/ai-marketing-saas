@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Campaign;
 use App\Models\Task;
+use App\Models\Plan;
 use Laravel\Cashier\Subscription;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -34,23 +35,40 @@ class ReportingController extends Controller
         $cacheKey = "report:revenue:tenant:{$user->tenant_id}";
 
         return Cache::remember($cacheKey, $this->cacheTtl, function () use ($user) {
-            // Get active subscriptions (Cashier)
-            $activeSubscriptions = Subscription::whereNotNull('ends_at')
-                ->where('ends_at', '>=', now())
-                ->orWhereNull('ends_at')
+            // Get active subscriptions, scoped to the requesting tenant.
+            // (subscriptions carries tenant_id directly; tenant-less platform
+            // admins are unscoped and see the whole platform.)
+            $activeSubscriptions = Subscription::query()
+                ->when($user->tenant_id, function ($query) use ($user) {
+                    $query->where('tenant_id', $user->tenant_id);
+                })
+                ->where(function ($query) {
+                    $query->whereNull('ends_at')
+                        ->orWhere('ends_at', '>=', now());
+                })
                 ->get();
 
-            // Calculate MRR and plan breakdown
+            // Calculate MRR and plan breakdown.
+            //
+            // DECISION: the monthly price is derived from the local plans
+            // table, NOT from subscriptions.stripe_price. That column stores a
+            // Stripe price ID string (e.g. "price_1AbCdEf…") — the old code
+            // did `stripe_price / 100` assuming cents, which is a division of
+            // a non-numeric string (ValueError on PHP 8) or a 0 — i.e. the
+            // previous MRR was always 0 (or a 500) even with real subs.
+            // Plans now carry amount/currency/interval (persisted by
+            // PlanController), and Plan::monthlyAmount() normalizes any
+            // billing interval to a monthly figure.
             $mrr = 0;
             $planBreakdown = [];
 
             foreach ($activeSubscriptions as $sub) {
-                // Get plan price from Stripe (stripe_price is in cents)
-                $price = $sub->stripe_price ?? 0; // cents
-                $amount = $price / 100; // convert to dollars
+                $plan = $this->resolvePlan($sub);
+                // Unmatched subscriptions contribute 0 — no fake math.
+                $amount = $plan ? $plan->monthlyAmount() : 0.0;
                 $mrr += $amount;
 
-                $planName = $sub->stripe_plan ?? 'unknown';
+                $planName = $plan ? $plan->name : 'unknown';
                 if (!isset($planBreakdown[$planName])) {
                     $planBreakdown[$planName] = ['count' => 0, 'amount' => 0];
                 }
@@ -74,6 +92,37 @@ class ReportingController extends Controller
                 'plan_breakdown' => $formattedBreakdown,
             ];
         });
+    }
+
+    /**
+     * Resolve the local Plan for a Cashier subscription.
+     *
+     * Primary match: subscriptions.stripe_price = plans.stripe_price_id
+     * (both hold the Stripe price ID). Fallback: plan name matching the
+     * subscription's name/type. Returns null when no local plan matches —
+     * callers contribute 0 to MRR rather than inventing a number.
+     */
+    private function resolvePlan(Subscription $sub): ?Plan
+    {
+        if (! empty($sub->stripe_price)) {
+            $plan = Plan::where('stripe_price_id', $sub->stripe_price)->first();
+
+            if ($plan) {
+                return $plan;
+            }
+        }
+
+        $names = array_filter([$sub->name, $sub->type]);
+
+        foreach ($names as $name) {
+            $plan = Plan::whereRaw('LOWER(name) = ?', [strtolower((string) $name)])->first();
+
+            if ($plan) {
+                return $plan;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -187,7 +236,11 @@ class ReportingController extends Controller
                 $nextMonth = $month->copy()->addMonth()->startOfDay();
 
                 // Subscriptions active during this month: those that started before nextMonth and (ended after month or no end)
-                $active = Subscription::where('created_at', '<', $nextMonth)
+                $active = Subscription::query()
+                    ->when($user->tenant_id, function ($query) use ($user) {
+                        $query->where('tenant_id', $user->tenant_id);
+                    })
+                    ->where('created_at', '<', $nextMonth)
                     ->where(function ($query) use ($month) {
                         $query->whereNull('ends_at')
                             ->orWhere('ends_at', '>=', $month);
@@ -196,8 +249,11 @@ class ReportingController extends Controller
 
                 $mrr = 0;
                 foreach ($active as $sub) {
-                    $price = $sub->stripe_price ?? 0;
-                    $mrr += $price / 100;
+                    // Same pricing decision as revenue(): local plans table is
+                    // the source of truth; subscriptions.stripe_price is a
+                    // price ID string, not a number.
+                    $plan = $this->resolvePlan($sub);
+                    $mrr += $plan ? $plan->monthlyAmount() : 0.0;
                 }
 
                 $trend[] = [

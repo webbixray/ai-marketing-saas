@@ -27,16 +27,17 @@ class TaskController extends Controller
         }
 
         $tasks = Task::with(['assignedUser'])
-            ->when($request->filled('status'), function ($query, $status) {
-                return $query->where('status', $status);
+            ->when($request->filled('status'), function ($query) use ($request) {
+                return $query->where('status', $request->input('status'));
             })
-            ->when($request->filled('priority'), function ($query, $priority) {
-                return $query->where('priority', $priority);
+            ->when($request->filled('priority'), function ($query) use ($request) {
+                return $query->where('priority', $request->input('priority'));
             })
-            ->when($request->filled('assigned_to'), function ($query, $assignedTo) {
-                return $query->where('assigned_to', $assignedTo);
+            ->when($request->filled('assigned_to'), function ($query) use ($request) {
+                return $query->where('assigned_to', $request->input('assigned_to'));
             })
-            ->when($request->filled('search'), function ($query, $search) {
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $search = $request->input('search');
                 return $query->where('title', 'like', "%{$search}%")
                     ->orWhere('description', 'like', "%{$search}%");
             })

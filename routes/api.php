@@ -1,15 +1,14 @@
 <?php
-Log::debug("ROUTES FILE LOADED");
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\ClientController;
+use App\Http\Controllers\Api\AutomationRuleController;
 use App\Http\Controllers\Api\ApiKeyController;
 use App\Http\Controllers\Api\FeatureFlagController;
 use App\Http\Middleware\Authenticate;
@@ -28,7 +27,7 @@ use Spatie\Permission\Middleware\PermissionMiddleware;
 
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:auth');
 Route::post('/login', [AuthController::class, 'login'])->name('login')->middleware('throttle:auth');
-Route::post('/logout', [AuthController::class, 'logout'])->middleware('throttle:auth');
+Route::post('/logout', [AuthController::class, 'logout'])->middleware(['auth:sanctum', 'throttle:auth']);
 Route::get('/user', [AuthController::class, 'user'])->middleware('auth:sanctum');
 
 // Email Verification Routes (no authentication required)
@@ -45,55 +44,8 @@ Route::get('/health', [HealthController::class, 'health'])->middleware('throttle
 Route::get('/health/live', [HealthController::class, 'live'])->middleware('throttle:health');
 Route::get('/health/ready', [HealthController::class, 'ready'])->middleware('throttle:health');
 
-Route::get('/test', function () {
-    return 'test';
-});
-
 Route::apiResource('campaigns', CampaignController::class)
     ->middleware(['auth:sanctum', 'throttle:api']);
-
-Route::middleware([Authenticate::class . ':sanctum'])->get('/auth-test', function () {
-    return ['status' => 'authenticated', 'user_id' => auth()->id(), 'timestamp' => now()];
-});
-
-// Test endpoint that will trigger authentication failure
-Route::middleware([Authenticate::class . ':sanctum'])->get('/auth-fail-test', function () {
-    return ['status' => 'should not reach here'];
-});
-
-// Test route with standard Laravel sanctum middleware
-Route::middleware('auth:sanctum')->get('/test-sanctum', function () {
-    return response()->json([
-        'user' => auth()->user(),
-        'message' => 'Standard sanctum middleware works'
-    ]);
-});
-
-// Test route with our custom middleware
-Route::middleware([App\Http\Middleware\Authenticate::class . ':sanctum'])->get('/test-custom', function () {
-    return response()->json([
-        'user' => auth()->user(),
-        'message' => 'Custom middleware works'
-    ]);
-});
-
-// Test route with no middleware
-Route::get('/test-no-middleware', function () {
-    return response()->json([
-        'user' => auth()->user(),
-        'message' => 'No middleware'
-    ]);
-});
-
-Route::get('/test-log', function () {
-    \Illuminate\Support\Facades\Log::info('API TEST LOG ROUTE ACCESSED');
-    return response()->json(['message' => 'api log test']);
-});
-
-Route::get('/no-middleware', function () {
-    \Illuminate\Support\Facades\Log::info('NO MIDDLEWARE ROUTE ACCESSED');
-    return response()->json(['message' => 'no middleware']);
-});
 
 // Protected route that requires authentication
 Route::middleware([App\Http\Middleware\Authenticate::class . ':sanctum'])->get('/protected', function () {
@@ -122,7 +74,6 @@ Route::get('tasks/{task}', [TaskController::class, 'show'])
 
 // Profile Management Routes
 Route::middleware([App\Http\Middleware\Authenticate::class . ':sanctum', 'throttle:api'])->group(function () {
-    Log::debug('PROFILE ROUTES GROUP LOADED');
     Route::get('/profile', [ProfileController::class, 'show']);
     Route::patch('/profile', [ProfileController::class, 'update']);
     Route::post('/change-password', [ProfileController::class, 'changePassword']);
@@ -140,6 +91,19 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('clients')->group(fu
     Route::delete('/{client}', [ClientController::class, 'destroy']);
     Route::get('/{client}/campaigns', [ClientController::class, 'campaigns']);
     Route::get('/{client}/performance', [ClientController::class, 'performance']);
+});
+
+// Automation Rule Routes
+Route::apiResource('automation-rules', AutomationRuleController::class)
+    ->middleware(['auth:sanctum', 'throttle:api'])
+    ->parameters(['automation-rules' => 'rule']);
+
+// AI Content Routes (mock provider in tests via phpunit.xml env)
+Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('ai')->group(function () {
+    Route::post('/generate', [\App\Http\Controllers\Api\AiContentController::class, 'generate']);
+    Route::get('/generations', [\App\Http\Controllers\Api\AiContentController::class, 'index']);
+    Route::get('/status', [\App\Http\Controllers\Api\AiContentController::class, 'status']);
+    Route::get('/insights/campaigns/{campaign}', [\App\Http\Controllers\Api\AiContentController::class, 'insights']);
 });
 
 // Billing Routes
@@ -226,7 +190,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('enterprise/sso')->g
 });
 
 // SCIM Routes
-Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('enterprise/scim')->group(function () {
+// Authenticated by the tenant's shared SCIM bearer token (not user Sanctum
+// tokens); see ScimAuth middleware. A plain user token receives 401.
+Route::middleware([\App\Http\Middleware\ScimAuth::class, 'throttle:api'])->prefix('enterprise/scim')->group(function () {
     Route::get('/service-provider-config', [\App\Http\Controllers\Enterprise\ScimController::class, 'serviceProviderConfig']);
     Route::get('/resource-types', [\App\Http\Controllers\Enterprise\ScimController::class, 'resourceTypes']);
     Route::get('/schemas', [\App\Http\Controllers\Enterprise\ScimController::class, 'schemas']);

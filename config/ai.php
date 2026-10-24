@@ -7,28 +7,20 @@ return [
     |--------------------------------------------------------------------------
     */
     'llm' => [
-        'default_provider' => env('LLM_DEFAULT_PROVIDER', 'openai'),
-        'timeout' => env('LLM_TIMEOUT', 60),
-        'max_retries' => env('LLM_MAX_RETRIES', 3),
-        'cache_ttl' => env('LLM_CACHE_TTL', 3600),
+        // 'mock' in the testing environment (phpunit.xml sets AI_DEFAULT_PROVIDER);
+        // 'openai' in production by default. AI_PROVIDER (if set) wins, so a
+        // single AI_PROVIDER=mock env switch enables the zero-cost pilot.
+        'default_provider' => env('AI_PROVIDER', env('AI_DEFAULT_PROVIDER', 'openai')),
+        'timeout' => (int) env('AI_TIMEOUT', 60),
+        'max_retries' => (int) env('AI_MAX_RETRIES', 2),
         'providers' => [
             'openai' => [
-                'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
-                'api_key' => env('OPENAI_API_KEY'),
-                'models' => ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-                'default_model' => env('OPENAI_DEFAULT_MODEL', 'gpt-4-turbo'),
+                'base_url' => env('AI_OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+                'api_key' => env('AI_OPENAI_API_KEY'),
+                'model' => env('AI_OPENAI_MODEL', 'gpt-4o-mini'),
             ],
-            'anthropic' => [
-                'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com/v1'),
-                'api_key' => env('ANTHROPIC_API_KEY'),
-                'models' => ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
-                'default_model' => env('ANTHROPIC_DEFAULT_MODEL', 'claude-3-sonnet'),
-            ],
-            'ollama' => [
-                'base_url' => env('OLLAMA_BASE_URL', 'http://localhost:11434/v1'),
-                'api_key' => env('OLLAMA_API_KEY'),
-                'models' => ['llama3', 'mistral', 'codellama'],
-                'default_model' => env('OLLAMA_DEFAULT_MODEL', 'llama3'),
+            'mock' => [
+                'model' => 'mock-1',
             ],
         ],
     ],

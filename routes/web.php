@@ -1,24 +1,15 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Auth\WebAuthController;
 use App\Http\Controllers\Admin\PlanController;
 
-Log::info('WEB.PHP ROUTES FILE LOADED');
-
 Route::get('/', function () {
-    Log::info('WEB ROOT ROUTE ACCESSSED');
     if (auth()->check()) {
         return redirect()->route('admin.dashboard');
     }
     return view('welcome');
-});
-
-Route::get('/test-log', function () {
-    Log::info('TEST LOG ROUTE ACCESSSED');
-    return response()->json(['message' => 'log test']);
 });
 
 // Pulse dashboard is auto-registered at /pulse (configured in config/pulse.php)
@@ -49,6 +40,12 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/reports', function () {
         return view('admin.reports');
     })->name('reports');
+
+    // User management routes
+    Route::get('/users', [App\Http\Controllers\Admin\UserManagementController::class, 'index'])->name('users.index');
+    Route::post('/users', [App\Http\Controllers\Admin\UserManagementController::class, 'store'])->name('users.store');
+    Route::post('/users/{user}/toggle-active', [App\Http\Controllers\Admin\UserManagementController::class, 'toggleActive'])->name('users.toggle-active');
+    Route::post('/users/{user}/role', [App\Http\Controllers\Admin\UserManagementController::class, 'updateRole'])->name('users.role');
     
     Route::get('/notifications', [App\Http\Controllers\Admin\NotificationController::class, 'index'])->name('notifications');
     Route::post('/notifications/{notification}/mark-as-read', [App\Http\Controllers\Admin\NotificationController::class, 'markAsRead'])->name('notifications.mark-as-read');

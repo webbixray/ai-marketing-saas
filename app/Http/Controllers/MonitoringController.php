@@ -38,13 +38,20 @@ class MonitoringController extends Controller
     /**
      * Cache keys, guarded for stores that do not support listing (e.g. array).
      *
+     * ArrayStore has no keys() method at all, so calling it raises an
+     * \Error rather than a BadMethodCallException.
+     *
      * @return array<int, string>
      */
     protected function safeCacheKeys(): array
     {
         try {
+            if (! method_exists(Cache::getStore(), 'keys')) {
+                return [];
+            }
+
             return Cache::keys();
-        } catch (\BadMethodCallException) {
+        } catch (\Throwable) {
             return [];
         }
     }

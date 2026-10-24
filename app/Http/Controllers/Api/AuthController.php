@@ -114,6 +114,13 @@ class AuthController extends Controller
             ], 401);
         }
 
+        // Deactivated accounts (admin toggle) cannot log in
+        if (! (bool) $user->is_active) {
+            return response()->json([
+                'message' => 'Account is deactivated.',
+            ], 401);
+        }
+
         // Ensure tenant_id is set (should be from registration)
         $token = $user->createToken('api-token')->plainTextToken;
 

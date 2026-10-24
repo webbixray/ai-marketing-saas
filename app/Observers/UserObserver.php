@@ -49,9 +49,17 @@ class UserObserver
 
     /**
      * Clear all report caches for a tenant.
+     *
+     * Platform administrators have no tenant (null); their report caches
+     * are tenant-wide and are not keyed per tenant, so there is nothing
+     * tenant-specific to clear.
      */
-    protected function clearReportCaches(int $tenantId): void
+    protected function clearReportCaches(?int $tenantId): void
     {
+        if ($tenantId === null) {
+            return;
+        }
+
         $keys = [
             "report:user_growth:tenant:{$tenantId}",
             "report:user_activity:tenant:{$tenantId}",

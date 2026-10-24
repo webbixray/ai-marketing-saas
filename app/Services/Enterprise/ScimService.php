@@ -685,16 +685,19 @@ class ScimService
             ]];
         }
 
-        // Add groups
-        $groups = $user->teams()->get()->map(function ($team) {
-            return [
-                'value' => $team->id,
-                'display' => $team->name,
-                'type' => 'direct',
-            ];
-        });
-        if (!empty($groups)) {
-            $userResource['groups'] = $groups->toArray();
+        // Add groups (teams() relation only exists when the teams feature
+        // schema is present; guard so provisioning reads never 500)
+        if (method_exists($user, 'teams')) {
+            $groups = $user->teams()->get()->map(function ($team) {
+                return [
+                    'value' => $team->id,
+                    'display' => $team->name,
+                    'type' => 'direct',
+                ];
+            });
+            if (!empty($groups)) {
+                $userResource['groups'] = $groups->toArray();
+            }
         }
 
         // Add roles

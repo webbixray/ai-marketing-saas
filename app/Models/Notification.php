@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Str;
 
 class Notification extends Model
 {
@@ -11,6 +12,29 @@ class Notification extends Model
 
     public $incrementing = false;
     protected $keyType = 'string';
+
+    /**
+     * The table uses a UUID primary key (not auto-incrementing).
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $notification): void {
+            if (empty($notification->id)) {
+                $notification->id = (string) Str::uuid();
+            }
+
+            // The table requires tenant_id; inherit it from a User recipient
+            // when the caller (e.g. the database notification channel) did
+            // not provide it.
+            if (empty($notification->tenant_id)
+                && $notification->notifiable_type === User::class
+                && $notification->notifiable_id
+            ) {
+                $notification->tenant_id = User::withoutGlobalScopes()
+                    ->find($notification->notifiable_id)?->tenant_id;
+            }
+        });
+    }
 
     /**
      * The attributes that are mass assignable.

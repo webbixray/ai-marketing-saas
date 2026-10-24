@@ -33,5 +33,7 @@
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="TEST_VAR" value="test_value"/>
+        <!-- AI surface runs the deterministic mock provider in tests (no network) -->
+        <env name="AI_DEFAULT_PROVIDER" value="mock"/>
     </php>
 </phpunit>

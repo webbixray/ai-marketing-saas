@@ -69,7 +69,8 @@ class PlanController extends Controller
                 'active' => true,
             ]);
 
-            // Save to local plan model
+            // Save to local plan model (amount kept locally so MRR reporting
+            // has a source of truth without calling the Stripe API)
             $plan = Plan::create([
                 'stripe_product_id' => $product->id,
                 'stripe_price_id' => $price->id,
@@ -77,6 +78,10 @@ class PlanController extends Controller
                 'description' => $request->description,
                 'active' => true,
                 'sort_order' => 0, // we'll manage order later
+                'amount' => $request->amount,
+                'currency' => strtolower($request->currency),
+                'interval' => $request->interval,
+                'interval_count' => $request->interval_count,
             ]);
 
             Log::info('Plan created via Stripe', [
@@ -139,11 +144,15 @@ class PlanController extends Controller
             $price->save();
 
             // Update the local plan model
+            // Note: we don't update the stripe IDs because they are immutable
             $plan->update([
                 'name' => $request->name,
                 'description' => $request->description,
                 'active' => $request->boolean('active'),
-                // Note: we don't update the stripe IDs because they are immutable
+                'amount' => $request->amount,
+                'currency' => strtolower($request->currency),
+                'interval' => $request->interval,
+                'interval_count' => $request->interval_count,
             ]);
 
             Log::info('Plan updated via Stripe', [
