@@ -1,0 +1,26 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
+
+parameters:
+    level: 6
+    paths:
+        - app
+        - config
+        - routes
+    excludePaths:
+        - app/Providers/*
+        - app/Agents/AI/ReportCopilotAgent.php
+        - app/Agents/Intelligence/ClientIntelligenceAgent.php
+        - app/Services/Enterprise/AdvancedRbacService.php
+        - app/Services/Enterprise/AuditComplianceService.php
+        - app/Services/Enterprise/MarketplaceService.php
+        - app/Services/Enterprise/WhiteLabelService.php
+        - app/Services/Intelligence/Analytics/AnomalyDetection.php
+        - app/Integrations/IntegrationHub.php
+        - app/Services/Enterprise/SsoService.php
+    noEnvCallsOutsideOfConfig: true
+    noModelMake: true
+    noUnnecessaryCollectionCall: true
+    checkModelAppends: true
+    reportUnmatchedIgnoredErrors: false

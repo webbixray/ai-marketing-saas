@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CheckAdminRole;
+use App\Http\Middleware\CspNonce;
 use App\Http\Middleware\SecurityHeaders;
 use App\Providers\AIServiceProvider;
 use App\Providers\EnterpriseServiceProvider;
@@ -26,6 +27,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
         ]);
+
+        // Add CSP nonce middleware (must run before SecurityHeaders)
+        $middleware->prepend(CspNonce::class);
 
         // Add global security headers middleware
         $middleware->append(SecurityHeaders::class);

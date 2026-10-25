@@ -158,18 +158,20 @@ return [
 
     'domain' => env('SESSION_DOMAIN'),
 
-    /*
-    |--------------------------------------------------------------------------
-    | HTTPS Only Cookies
-    |--------------------------------------------------------------------------
-    |
-    | By setting this option to true, session cookies will only be sent back
-    | to the server if the browser has a HTTPS connection. This will keep
-    | the cookie from being sent to you when it can't be done securely.
-    |
-    */
+    /* 
+        |-------------------------------------------------------------------------- 
+        | HTTPS Only Cookies 
+        |-------------------------------------------------------------------------- 
+        | 
+        | By setting this option to true, session cookies will only be sent back 
+        | to the server if the browser has a HTTPS connection. This will keep 
+        | the cookie from being sent to you when it can't be done securely. 
+        | 
+        | Default: true (fail-closed for security). Override with SESSION_SECURE_COOKIE=false for HTTP dev.
+        | 
+        */ 
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+        'secure' => env('SESSION_SECURE_COOKIE', true),
 
     /*
     |--------------------------------------------------------------------------

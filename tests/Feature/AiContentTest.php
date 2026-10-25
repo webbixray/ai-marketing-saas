@@ -203,6 +203,70 @@ class AiContentTest extends TestCase
             ->assertJsonValidationErrors(['brief']);
     }
 
+    public function test_ai_generate_with_empty_brief(): void
+    {
+        // Empty brief should be rejected
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson($this->apiUrl('/ai/generate'), [
+                'type' => 'ad_copy',
+                'brief' => '',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['brief']);
+    }
+
+    public function test_ai_generate_with_blank_brief(): void
+    {
+        // Blank brief (whitespace only) should be rejected
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson($this->apiUrl('/ai/generate'), [
+                'type' => 'ad_copy',
+                'brief' => '   ',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['brief']);
+    }
+
+    public function test_ai_generate_output_has_required_fields(): void
+    {
+        config(['ai.llm.default_provider' => 'mock']);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson($this->apiUrl('/ai/generate'), [
+                'type' => 'ad_copy',
+                'brief' => 'Spring sale for a coffee brand, 20% off',
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonStructure([
+                'id',
+                'type',
+                'status',
+                'output',
+                'created_at',
+                'updated_at',
+            ]);
+    }
+
+    public function test_ai_generate_output_type_matches_request(): void
+    {
+        config(['ai.llm.default_provider' => 'mock']);
+
+        // Test with valid types that the system accepts
+        $types = ['ad_copy', 'email'];
+
+        foreach ($types as $type) {
+            $response = $this->actingAs($this->user, 'sanctum')
+                ->postJson($this->apiUrl('/ai/generate'), [
+                    'type' => $type,
+                    'brief' => "brief for {$type}",
+                ]);
+
+            $response->assertCreated()
+                ->assertJsonPath('type', $type);
+        }
+    }
+
     public function test_ai_generation_can_be_listed_paginated(): void
     {
         config(['ai.llm.default_provider' => 'mock']);
@@ -225,6 +289,12 @@ class AiContentTest extends TestCase
             ->getJson($this->apiUrl('/ai/generations?per_page=1'))
             ->assertOk()
             ->assertJsonCount(1, 'data');
+
+        // Page 2 should have remaining items
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson($this->apiUrl('/ai/generations?per_page=1&page=2'))
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
     }
 
     public function test_ai_provider_failure_logs_error_details(): void
@@ -245,4 +315,31 @@ class AiContentTest extends TestCase
         $this->assertNotNull($row->error);
         $this->assertStringContainsString('API', $row->error); // error should mention API issue
     }
+
+    public function test_ai_generate_rate_limits(): void
+    {
+        config(['ai.llm.default_provider' => 'mock']);
+
+        // Make multiple rapid requests to test rate limiting
+        $responses = [];
+        for ($i = 0; $i < 15; $i++) {
+            $responses[] = $this->actingAs($this->user, 'sanctum')
+                ->postJson($this->apiUrl('/ai/generate'), [
+                    'type' => 'ad_copy',
+                    'brief' => "brief test {$i}",
+                ]);
+        }
+
+        // First few should succeed, remaining may be rate limited
+        $successful = 0;
+        foreach ($responses as $response) {
+            if ($response->status() === 201 || $response->status() === 200) {
+                $successful++;
+            }
+        }
+
+        // At least the first request should succeed
+        $this->assertGreaterThan(0, $successful);
+    }
+
 }

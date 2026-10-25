@@ -19,11 +19,15 @@ class SecurityHeaders
     {
         $response = $next($request);
 
-        // Content Security Policy - restrictive by default
+        // Get CSP nonce from request (set by CspNonce middleware)
+        $nonce = $request->attributes->get('csp_nonce');
+        $nonceAttr = $nonce ? "'nonce-{$nonce}'" : '';
+
+        // Content Security Policy - restrictive by default with nonce support
         $csp = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com",
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
+            "script-src 'self' {$nonceAttr} https://cdn.jsdelivr.net https://unpkg.com",
+            "style-src 'self' {$nonceAttr} https://fonts.googleapis.com https://cdn.jsdelivr.net",
             "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
             "img-src 'self' data: https:",
             "connect-src 'self' https://api.stripe.com",
@@ -35,7 +39,7 @@ class SecurityHeaders
         ];
 
         // Add security headers
-        $response->headers->set('Content-Security-Policy', implode('; ', $csp));
+        $response->headers->set('Content-Security-Policy', implode('; ', array_filter($csp)));
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'DENY');
         $response->headers->set('X-XSS-Protection', '1; mode=block');
@@ -45,8 +49,8 @@ class SecurityHeaders
         $response->headers->set('Cross-Origin-Resource-Policy', 'same-origin');
         $response->headers->set('Cross-Origin-Embedder-Policy', 'require-corp');
 
-        // HSTS - only in production with HTTPS
-        if (app()->environment('production') && $request->isSecure()) {
+        // HSTS - on all HTTPS environments (not just production)
+        if ($request->isSecure()) {
             $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
         }
 
